@@ -46,6 +46,7 @@ dependencies:
   flutter_switch: ^0.3.2
   font_awesome_flutter: ^10.8.0
   shared_preferences: ^2.2.2
+  modern_launcher_name: ^1.0.0
 
 dev_dependencies:
   flutter_test:
@@ -57,6 +58,8 @@ dev_dependencies:
   # package. See that file for information about deactivating specific lint
   # rules and activating additional ones.
   flutter_lints: ^5.0.0
+modern_launcher_name:
+  name: "Energy Smart"
 
 # For information on the generic Dart part of this file, see the
 # following page: https://dart.dev/tools/pub/pubspec

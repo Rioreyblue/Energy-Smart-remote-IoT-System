@@ -87,7 +87,7 @@ class _HomeScreenState extends State<HomeScreen> {
           child: ClipRRect(
             borderRadius: BorderRadius.circular(Insets.md),
             child: AnimatedBottomNavigationBar(
-              splashSpeedInMilliseconds: 400,
+              splashSpeedInMilliseconds: 500,
               icons: const [
                 Iconsax.home,
                 Iconsax.activity,
