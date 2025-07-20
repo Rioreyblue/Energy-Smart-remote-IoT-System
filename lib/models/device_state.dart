@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'dart:async';
 
-class DeviceState {
+class DeviceStateModel {
   final String name;
   final IconData icon;
   final String label;
@@ -12,7 +12,7 @@ class DeviceState {
   String timerText = '0:00:00:00';
   Timer? _timer;
 
-  DeviceState({
+  DeviceStateModel({
     required this.name,
     required this.icon,
     required this.isOn,
