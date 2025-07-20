@@ -17,16 +17,16 @@ class _HomeScreenState extends State<HomeScreen> {
 
   final List<Widget> _pages = [
     HomePage(),
-    const Center(child: Text('Activity')),
-    const Center(child: Text('Suggestion')),
-    const Center(child: Text('Profile')),
+    const Center(child: Text('ACIVITY')),
+    const Center(child: Text('UTILITIES')),
+    const Center(child: Text('PROFILE')),
   ];
 
   final List<String> _labels = [
     'ENERGY SMART',
-    'Activity',
-    'Suggestion',
-    'Profile',
+    'ACIVITY',
+    'UTILITIES',
+    'PROFILE',
   ];
 
   @override
@@ -112,60 +112,6 @@ class _HomeScreenState extends State<HomeScreen> {
           ),
         ),
       ),
-
-      //this
-      // bottomNavigationBar: Container(
-      //   color: Theme.of(context).colorScheme.surface,
-      //   child: Padding(
-      //     padding: EdgeInsets.all(Insets.sm),
-      //     child: ClipRRect(
-      //       borderRadius: BorderRadius.circular(Insets.md),
-      //       child: AnimatedBottomNavigationBar.builder(
-      //         itemCount: _labels.length,
-      //         tabBuilder: (int index, bool isActive) {
-      //           final color =
-      //               isActive
-      //                   ? (isDarkMode ? AppColor.surfaceDark : AppColor.surface)
-      //                   : Colors.white;
-
-      //           return Column(
-      //             mainAxisAlignment: MainAxisAlignment.center,
-      //             children: [
-      //               Icon(
-      //                 [
-      //                   Iconsax.home,
-      //                   Iconsax.activity,
-      //                   Iconsax.airdrop,
-      //                   Iconsax.setting,
-      //                 ][index],
-      //                 color: color,
-      //               ),
-      //               const SizedBox(height: 4),
-      //               Text(
-      //                 _labels[index],
-      //                 style: TextStyle(
-      //                   color: color,
-      //                   fontSize: 12,
-      //                   fontWeight: FontWeight.w500,
-      //                 ),
-      //               ),
-      //             ],
-      //           );
-      //         },
-      //         activeIndex: _currentIndex,
-      //         gapLocation: GapLocation.none,
-      //         onTap: (index) {
-      //           setState(() {
-      //             _currentIndex = index;
-      //           });
-      //         },
-      //         backgroundGradient: LinearGradient(
-      //           colors: [AppColor.accentGreen, AppColor.lowConsumption],
-      //         ),
-      //       ),
-      //     ),
-      //   ),
-      // ),
     );
   }
 }
