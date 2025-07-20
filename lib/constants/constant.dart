@@ -37,9 +37,7 @@ class AppColor {
   static const Color surfaceDark = Color(0xFF23262F); // Dark gray
 
   // Accent & Interactive Colors
-  static const Color accentGreen = Color(
-    0xFF27AE60,
-  ); // Energy Green (On/Active)
+  static const Color accentGreen = Color(0xFF27AE60,); // Energy Green (On/Active)
   static const Color accentRed = Color(0xFFE74C3C); // Alert Red (Off/Warning)
   static const Color disabled = Color(0xFFBDC3C7); // Warm Gray (Inactive)
 
