@@ -80,34 +80,36 @@ class _HomeScreenState extends State<HomeScreen> {
       body: _pages[_currentIndex],
 
       // bottomNavigation
-      bottomNavigationBar: Container(
-        color: Theme.of(context).colorScheme.surface,
-        child: Padding(
-          padding: EdgeInsets.all(Insets.sm),
-          child: ClipRRect(
-            borderRadius: BorderRadius.circular(Insets.md),
-            child: AnimatedBottomNavigationBar(
-              splashSpeedInMilliseconds: 500,
-              icons: const [
-                Iconsax.home,
-                Iconsax.activity,
-                Iconsax.airdrop,
-                Iconsax.setting,
-              ],
-              gapLocation: GapLocation.none,
-              activeColor:
-                  (isDarkMode ? AppColor.surfaceDark : AppColor.surface),
-              splashColor:
-                  (isDarkMode ? AppColor.surfaceDark : AppColor.surface),
-              backgroundGradient: LinearGradient(
-                colors: [AppColor.accentGreen, AppColor.lowConsumption],
+      bottomNavigationBar: SafeArea(
+        child: Container(
+          color: Theme.of(context).colorScheme.surface,
+          child: Padding(
+            padding: EdgeInsets.all(Insets.sm),
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(Insets.md),
+              child: AnimatedBottomNavigationBar(
+                splashSpeedInMilliseconds: 500,
+                icons: const [
+                  Iconsax.home,
+                  Iconsax.activity,
+                  Iconsax.airdrop,
+                  Iconsax.setting,
+                ],
+                gapLocation: GapLocation.none,
+                activeColor:
+                    (isDarkMode ? AppColor.surfaceDark : AppColor.surface),
+                splashColor:
+                    (isDarkMode ? AppColor.surfaceDark : AppColor.surface),
+                backgroundGradient: LinearGradient(
+                  colors: [AppColor.accentGreen, AppColor.lowConsumption],
+                ),
+                activeIndex: _currentIndex,
+                onTap: (index) {
+                  setState(() {
+                    _currentIndex = index;
+                  });
+                },
               ),
-              activeIndex: _currentIndex,
-              onTap: (index) {
-                setState(() {
-                  _currentIndex = index;
-                });
-              },
             ),
           ),
         ),
