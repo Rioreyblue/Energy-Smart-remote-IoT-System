@@ -58,11 +58,18 @@ class _HomeScreenState extends State<HomeScreen> {
         leading: Icon(Iconsax.radar_2),
         flexibleSpace: SafeArea(
           child: Container(
-            margin: EdgeInsets.all(Insets.sm),
+            margin: EdgeInsets.all(Insets.sm - 2),
             decoration: BoxDecoration(
               borderRadius: BorderRadius.circular(Insets.md),
-              gradient: LinearGradient(
-                colors: [AppColor.accentGreen, AppColor.lowConsumption],
+              color: AppColor.accentGreen.withAlpha(128),
+            ),
+            child: Container(
+              margin: EdgeInsets.all(Insets.xm),
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(Insets.md),
+                gradient: LinearGradient(
+                  colors: [AppColor.accentGreen, AppColor.lowConsumption],
+                ),
               ),
             ),
           ),
@@ -82,9 +89,14 @@ class _HomeScreenState extends State<HomeScreen> {
       // bottomNavigation
       bottomNavigationBar: SafeArea(
         child: Container(
-          color: Theme.of(context).colorScheme.surface,
+          margin: EdgeInsets.all(Insets.xm - 2),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(Insets.md),
+            // color: Theme.of(context).colorScheme.surface,
+            color: AppColor.accentGreen.withAlpha(128),
+          ),
           child: Padding(
-            padding: EdgeInsets.all(Insets.sm),
+            padding: EdgeInsets.all(Insets.xm),
             child: ClipRRect(
               borderRadius: BorderRadius.circular(Insets.md),
               child: AnimatedBottomNavigationBar(
