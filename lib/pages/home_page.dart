@@ -1,14 +1,14 @@
 import 'package:exercise_app/constants/constant.dart';
-import 'package:exercise_app/widgets/quick_controls.dart';
-import 'package:exercise_app/widgets/scene_modes.dart' as scene_models;
+import 'package:exercise_app/components/quick_controls.dart';
+import 'package:exercise_app/components/scene_modes.dart' as scene_models;
 import 'package:flutter/material.dart';
 import 'package:iconsax/iconsax.dart';
 import 'dart:async'; // Added for Timer
-import 'package:exercise_app/pages/scene_edit_page.dart';
-import 'package:exercise_app/widgets/header.dart';
-import 'package:exercise_app/widgets/energy_overview_card.dart';
-import 'package:exercise_app/widgets/activity_section.dart';
-import 'package:exercise_app/widgets/energy_insights.dart';
+// import 'package:exercise_app/pages/scene_edit_page.dart';
+import 'package:exercise_app/components/header.dart';
+import 'package:exercise_app/components/energy_overview_card.dart';
+import 'package:exercise_app/components/activity_section.dart';
+import 'package:exercise_app/components/energy_insights.dart';
 import 'package:exercise_app/models/device_state.dart';
 
 class HomePage extends StatefulWidget {

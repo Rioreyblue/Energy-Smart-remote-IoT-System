@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:exercise_app/widgets/scene_modes.dart';
+import 'package:exercise_app/components/scene_modes.dart';
 
 class SceneProvider extends ChangeNotifier {
   List<ScenePreset> _presets;
