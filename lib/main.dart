@@ -3,6 +3,13 @@ import 'package:flutter/material.dart';
 import 'package:exercise_app/constants/constant.dart';
 import 'package:provider/provider.dart';
 import 'widgets/theme_provider.dart';
+import 'pages/data_management_page.dart';
+import 'pages/bill_history_page.dart';
+import 'pages/export_usage_data_page.dart';
+import 'pages/tips_advice_page.dart';
+import 'pages/faq_help_center_page.dart';
+import 'pages/feedback_page.dart';
+import 'pages/contact_admin_page.dart';
 
 void main() {
   runApp(const MyApp());
@@ -26,6 +33,15 @@ class MyApp extends StatelessWidget {
             debugShowCheckedModeBanner: false,
             initialRoute: '/',
             home: HomeScreen(),
+            routes: {
+              '/dataManagement': (context) => const DataManagementPage(),
+              '/billHistory': (context) => const BillHistoryPage(),
+              '/exportUsageData': (context) => const ExportUsageDataPage(),
+              '/tipsAdvice': (context) => const TipsAdvicePage(),
+              '/faqHelpCenter': (context) => const FAQHelpCenterPage(),
+              '/feedback': (context) => const FeedbackPage(),
+              '/contactAdmin': (context) => const ContactAdminPage(),
+            },
           );
         },
       ),

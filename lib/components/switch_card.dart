@@ -91,7 +91,7 @@ class _SwitchCardState extends State<SwitchCard> {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final backgroundColor =
         widget.isOn
-            ? colorScheme.surfaceVariant.withAlpha(
+            ? colorScheme.surfaceContainerHighest.withAlpha(
               (isDark ? 0.3 : 0.7) * 255 ~/ 1,
             )
             : colorScheme.surface;
@@ -140,7 +140,7 @@ class _SwitchCardState extends State<SwitchCard> {
                             ? colorScheme.secondary.withAlpha(
                               (0.15 * 255).toInt(),
                             )
-                            : colorScheme.surfaceVariant.withAlpha(
+                            : colorScheme.surfaceContainerHighest.withAlpha(
                               (0.1 * 255).toInt(),
                             ),
                     borderRadius: BorderRadius.circular(20),
@@ -148,8 +148,8 @@ class _SwitchCardState extends State<SwitchCard> {
                   child: CupertinoSwitch(
                     value: widget.isOn,
                     onChanged: widget.onToggle,
-                    activeColor: colorScheme.secondary,
-                    trackColor: colorScheme.onSurface.withAlpha(
+                    activeTrackColor: colorScheme.secondary,
+                    inactiveTrackColor: colorScheme.onSurface.withAlpha(
                       (0.1 * 255).toInt(),
                     ),
                   ),
