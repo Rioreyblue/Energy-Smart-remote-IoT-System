@@ -4,6 +4,8 @@ import 'package:exercise_app/pages/home_page.dart';
 import 'package:flutter/material.dart';
 import 'package:iconsax/iconsax.dart';
 import 'widgets/theme_switch_button.dart';
+import 'package:go_router/go_router.dart';
+import 'widgets/app_drawer.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -58,7 +60,7 @@ class _HomeScreenState extends State<HomeScreen> {
           builder:
               (context) => IconButton(
                 icon: Icon(
-                  Iconsax.radar_2,
+                  Iconsax.sidebar_left,
                   color: Theme.of(context).iconTheme.color,
                 ),
                 onPressed: () => Scaffold.of(context).openDrawer(),
@@ -90,82 +92,7 @@ class _HomeScreenState extends State<HomeScreen> {
           ),
         ],
       ),
-      drawer: Drawer(
-        child: ListView(
-          padding: EdgeInsets.zero,
-          children: [
-            DrawerHeader(
-              decoration: BoxDecoration(color: AppColor.accentGreen),
-              child: Center(
-                child: Text(
-                  'Menu',
-                  style: TextStyle(
-                    color: Colors.white,
-                    fontSize: 24,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-              ),
-            ),
-            ListTile(
-              leading: Icon(Icons.storage),
-              title: Text('Data Management'),
-              onTap: () {
-                Navigator.pop(context);
-                Navigator.pushNamed(context, '/dataManagement');
-              },
-            ),
-            ListTile(
-              leading: Icon(Icons.history),
-              title: Text('Bill History'),
-              onTap: () {
-                Navigator.pop(context);
-                Navigator.pushNamed(context, '/billHistory');
-              },
-            ),
-            ListTile(
-              leading: Icon(Icons.file_upload),
-              title: Text('Export Usage Data'),
-              onTap: () {
-                Navigator.pop(context);
-                Navigator.pushNamed(context, '/exportUsageData');
-              },
-            ),
-            ListTile(
-              leading: Icon(Icons.tips_and_updates),
-              title: Text('Tips & Advice'),
-              onTap: () {
-                Navigator.pop(context);
-                Navigator.pushNamed(context, '/tipsAdvice');
-              },
-            ),
-            ListTile(
-              leading: Icon(Icons.help_center),
-              title: Text('FAQ / Help Center'),
-              onTap: () {
-                Navigator.pop(context);
-                Navigator.pushNamed(context, '/faqHelpCenter');
-              },
-            ),
-            ListTile(
-              leading: Icon(Icons.feedback),
-              title: Text('Feedback'),
-              onTap: () {
-                Navigator.pop(context);
-                Navigator.pushNamed(context, '/feedback');
-              },
-            ),
-            ListTile(
-              leading: Icon(Icons.contact_mail),
-              title: Text('Contact Admin / Helpdesk'),
-              onTap: () {
-                Navigator.pop(context);
-                Navigator.pushNamed(context, '/contactAdmin');
-              },
-            ),
-          ],
-        ),
-      ),
+      drawer: const AppDrawer(),
       //body
       body: _pages[_currentIndex],
 
