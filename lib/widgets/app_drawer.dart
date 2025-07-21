@@ -129,7 +129,7 @@ class AppDrawer extends StatelessWidget {
           end: Alignment.bottomRight,
           colors: [
             AppColor.accentGreen,
-            AppColor.accentGreen.withAlpha(204), // 0.8 * 255 = 204
+            AppColor.lowConsumption.withAlpha(204), // 0.8 * 255 = 204
           ],
         ),
       ),
