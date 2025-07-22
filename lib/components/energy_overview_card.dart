@@ -9,10 +9,10 @@ class EnergyOverviewCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: EdgeInsets.all(Insets.xm-1),
+      padding: EdgeInsets.all(Insets.xm - 1),
       decoration: BoxDecoration(
-      color: AppColor.accentGreen.withAlpha(128),
-        borderRadius: BorderRadius.circular(Insets.lg)
+        color: AppColor.accentGreen.withAlpha(128),
+        borderRadius: BorderRadius.circular(Insets.lg),
       ),
       child: Container(
         padding: EdgeInsets.all(Insets.lg),
@@ -46,7 +46,10 @@ class EnergyOverviewCard extends StatelessWidget {
                   ),
                 ),
                 Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 8,
+                    vertical: 4,
+                  ),
                   decoration: BoxDecoration(
                     color: Colors.white.withAlpha((0.2 * 255).toInt()),
                     borderRadius: BorderRadius.circular(8),
@@ -74,7 +77,10 @@ class EnergyOverviewCard extends StatelessWidget {
                     fontWeight: FontWeight.bold,
                   ),
                 ),
-                Icon(Iconsax.convertshape5, color: AppColor.surface.withAlpha(180),),
+                Icon(
+                  Iconsax.convertshape5,
+                  color: AppColor.surface.withAlpha(180),
+                ),
                 Text(
                   '₱00.000',
                   style: TextStyle(
