@@ -1,33 +1,30 @@
 import 'package:flutter/material.dart';
-import '../constants/constant.dart';
+import '../../constants/constant.dart';
 import 'package:iconsax/iconsax.dart';
-import '../widgets/card.dart';
+import '../../widgets/card.dart';
 
-class TipsAdvicePage extends StatelessWidget {
-  const TipsAdvicePage({super.key});
+class BillHistoryPage extends StatelessWidget {
+  const BillHistoryPage({super.key});
 
   @override
   Widget build(BuildContext context) {
-    final List<Map<String, dynamic>>tips = [
+    final bills = [
       {
-        'title': 'Unplug Devices',
-        'desc': 'Unplug electronics when not in use to save energy.',
-        'icon': Iconsax.electricity,
+        'duration': 'May 2024',
+        'start': '2024-05-01',
+        'end': '2024-05-31',
+        'amount': '₱1,200',
       },
       {
-        'title': 'Use LED Bulbs',
-        'desc': 'Switch to LED bulbs for lower consumption.',
-        'icon': Iconsax.lamp_on,
-      },
-      {
-        'title': 'Set AC to 24°C',
-        'desc': 'Optimal AC temperature for savings.',
-        'icon': Iconsax.element_3,
+        'duration': 'April 2024',
+        'start': '2024-04-01',
+        'end': '2024-04-30',
+        'amount': '₱1,050',
       },
     ];
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Tips & Advice'),
+        title: const Text('Bill History'),
         backgroundColor: AppColor.accentGreen,
         elevation: 0,
       ),
@@ -37,21 +34,21 @@ class TipsAdvicePage extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
-              'Energy Saving Tips',
+              'Your Bill History',
               style: Theme.of(context).textTheme.headlineSmall,
             ),
             const SizedBox(height: Insets.md),
             Expanded(
               child: ListView.separated(
-                itemCount: tips.length,
+                itemCount: bills.length,
                 separatorBuilder: (_, __) => const SizedBox(height: Insets.sm),
                 itemBuilder: (context, i) {
-                  final tip = tips[i];
+                  final bill = bills[i];
                   return AppCard(
                     child: Row(
                       children: [
                         Icon(
-                          tip['icon'] as IconData,
+                          Iconsax.receipt,
                           color: AppColor.accentGreen,
                           size: 28,
                         ),
@@ -61,16 +58,21 @@ class TipsAdvicePage extends StatelessWidget {
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
                               Text(
-                                tip['title']!,
+                                bill['duration']!,
                                 style: Theme.of(context).textTheme.bodyLarge
                                     ?.copyWith(fontWeight: FontWeight.bold),
                               ),
                               Text(
-                                tip['desc']!,
-                                style: Theme.of(context).textTheme.bodyMedium,
+                                '${bill['start']} - ${bill['end']}',
+                                style: Theme.of(context).textTheme.labelSmall,
                               ),
                             ],
                           ),
+                        ),
+                        Text(
+                          bill['amount']!,
+                          style: Theme.of(context).textTheme.bodyLarge
+                              ?.copyWith(color: AppColor.accentGreen),
                         ),
                       ],
                     ),

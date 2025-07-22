@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import '../constants/constant.dart';
+import '../../constants/constant.dart';
 import 'package:iconsax/iconsax.dart';
 
 class FAQHelpCenterPage extends StatelessWidget {

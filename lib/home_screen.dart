@@ -1,10 +1,12 @@
 import 'package:animated_bottom_navigation_bar/animated_bottom_navigation_bar.dart';
 import 'package:exercise_app/constants/constant.dart';
-import 'package:exercise_app/pages/home_page.dart';
+import 'package:exercise_app/pages/goals/goals_page.dart';
+import 'package:exercise_app/pages/home/home_page.dart';
+import 'package:exercise_app/pages/monitoring/monitoring_page.dart';
+import 'package:exercise_app/pages/settings/settings_page.dart';
 import 'package:flutter/material.dart';
 import 'package:iconsax/iconsax.dart';
 import 'widgets/theme_switch_button.dart';
-import 'package:go_router/go_router.dart';
 import 'widgets/app_drawer.dart';
 
 class HomeScreen extends StatefulWidget {
@@ -19,16 +21,16 @@ class _HomeScreenState extends State<HomeScreen> {
 
   final List<Widget> _pages = [
     HomePage(),
-    const Center(child: Text('ACIVITY')),
-    const Center(child: Text('UTILITIES')),
-    const Center(child: Text('PROFILE')),
+    MonitoringPage(),
+    GoalsPage(),
+    SettingsPage()
   ];
 
   final List<String> _labels = [
     'ENERGY SMART',
-    'ACIVITY',
-    'UTILITIES',
-    'PROFILE',
+    'MONITORING',
+    'GOALS',
+    'SETTINGS',
   ];
 
   @override
@@ -55,7 +57,6 @@ class _HomeScreenState extends State<HomeScreen> {
             ),
           ],
         ),
-        automaticallyImplyLeading: false,
         leading: Builder(
           builder:
               (context) => IconButton(
