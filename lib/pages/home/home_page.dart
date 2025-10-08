@@ -3,13 +3,13 @@ import 'package:exercise_app/components/quick_controls.dart';
 import 'package:exercise_app/components/scene_modes.dart' as scene_models;
 import 'package:flutter/material.dart';
 import 'package:iconsax/iconsax.dart';
-import 'dart:async'; // Added for Timer
+import 'package:provider/provider.dart';
 // import 'package:exercise_app/pages/scene_edit_page.dart';
 import 'package:exercise_app/components/header.dart';
 import 'package:exercise_app/components/energy_overview_card.dart';
 import 'package:exercise_app/components/activity_section.dart';
 import 'package:exercise_app/components/energy_insights.dart';
-import 'package:exercise_app/models/device_state.dart';
+import 'package:exercise_app/controllers/home_controller.dart';
 
 class HomePage extends StatefulWidget {
   const HomePage({super.key});
@@ -19,38 +19,6 @@ class HomePage extends StatefulWidget {
 }
 
 class _HomePageState extends State<HomePage> {
-  // Device state and timer tracking
-  final List<DeviceStateModel> _devices = [
-    DeviceStateModel(
-      name: 'Air Conditioner',
-      icon: Iconsax.element_3,
-      isOn: false,
-      label: 'Cost',
-      cost: '₱1.5',
-    ),
-    DeviceStateModel(
-      name: 'Water Heater',
-      icon: Iconsax.drop,
-      isOn: false,
-      label: 'Cost',
-      cost: '₱1.5',
-    ),
-    DeviceStateModel(
-      name: 'Living Room',
-      icon: Iconsax.lamp,
-      isOn: false,
-      label: 'Cost',
-      cost: '₱1.5',
-    ),
-    DeviceStateModel(
-      name: 'Kitchen',
-      icon: Iconsax.coffee,
-      isOn: false,
-      label: 'Cost',
-      cost: '₱1.5',
-    ),
-  ];
-
   // Updated scene presets using the new structure
   late final List<scene_models.ScenePreset> _scenePresets;
   String _activeScene = 'Home Mode';
@@ -60,6 +28,10 @@ class _HomePageState extends State<HomePage> {
   void initState() {
     super.initState();
     _initializeScenePresets();
+    // Initialize the home controller
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      context.read<HomeController>().initialize();
+    });
   }
 
   void _initializeScenePresets() {
@@ -128,9 +100,6 @@ class _HomePageState extends State<HomePage> {
 
   @override
   void dispose() {
-    for (final device in _devices) {
-      device.dispose();
-    }
     super.dispose();
   }
 
@@ -155,14 +124,12 @@ class _HomePageState extends State<HomePage> {
       // Simulate scene execution delay
       await Future.delayed(const Duration(milliseconds: 800));
 
-      // Apply device states
-      for (int i = 0; i < _devices.length; i++) {
-        final deviceName = _devices[i].name;
-        final deviceState = deviceStates[deviceName];
-
+      // Apply device states to appliances
+      final controller = context.read<HomeController>();
+      for (final appliance in controller.appliances) {
+        final deviceState = deviceStates[appliance.name];
         if (deviceState != null) {
-          _devices[i].toggle(deviceState.isOn);
-          // You can also handle deviceState.value for dimming, fan speed, etc.
+          await controller.toggleAppliance(appliance.uid, deviceState.isOn);
         }
       }
 
@@ -211,27 +178,7 @@ class _HomePageState extends State<HomePage> {
             SizedBox(height: Insets.lg),
             EnergyOverviewCard(responsiveFontSize: _responsiveFontSize),
             SizedBox(height: Insets.md),
-            QuickControls(
-              devices:
-                  _devices
-                      .map(
-                        (d) => QuickDeviceState(
-                          name: d.name,
-                          icon: d.icon,
-                          isOn: d.isOn,
-                          label: d.label,
-                          cost: d.cost,
-                          timerText: d.timerText,
-                        ),
-                      )
-                      .toList(),
-              onToggle: (index, value) {
-                setState(() {
-                  _devices[index].toggle(value);
-                });
-              },
-              responsiveFontSize: _responsiveFontSize,
-            ),
+            QuickControls(responsiveFontSize: _responsiveFontSize),
             SizedBox(height: Insets.md),
             // Updated SceneModes widget with edit navigation
             scene_models.SceneModes(

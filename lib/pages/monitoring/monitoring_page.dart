@@ -1,10 +1,14 @@
 import 'package:exercise_app/constants/constant.dart';
 import 'package:flutter/material.dart';
-import 'package:fl_chart/fl_chart.dart';
 import 'package:iconsax/iconsax.dart';
-import 'package:intl/intl.dart';
-// Import your constants file
-// import 'constants.dart';
+import 'package:exercise_app/components/monitoring_header_card.dart';
+import 'package:exercise_app/components/monitoring_chart_card.dart';
+import 'package:exercise_app/components/monitoring_status_card.dart';
+import 'package:exercise_app/utils/monitoring_prediction_utils.dart';
+import 'package:file_picker/file_picker.dart';
+import 'package:path_provider/path_provider.dart';
+import 'dart:io';
+import 'dart:convert';
 
 class MonitoringPage extends StatefulWidget {
   const MonitoringPage({super.key});
@@ -16,255 +20,53 @@ class MonitoringPage extends StatefulWidget {
 class _MonitoringPageState extends State<MonitoringPage> {
   String selectedPeriod = 'Week';
   final List<String> periods = ['Day', 'Week', 'Month', 'Year'];
+  bool _isLoading = false;
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final isDark = theme.brightness == Brightness.dark;
-
     return Scaffold(
-      backgroundColor: isDark ? AppColor.backgroundDark : AppColor.surface,
+      backgroundColor: theme.colorScheme.surface,
       body: SafeArea(
-        child: RefreshIndicator(
-          onRefresh: () async {
-            await Future.delayed(const Duration(seconds: 1));
-          },
-          child: ListView(
-            padding: Insets.allLg,
-            children: [
-              _buildTopStats(),
-
-              const SizedBox(height: Insets.xl),
-              // Status Overview Cards
-              _buildStatusOverview(isDark),
-
-              const SizedBox(height: Insets.xl),
-
-              // Period Selector
-              _buildPeriodSelector(isDark),
-
-              const SizedBox(height: Insets.lg),
-
-              // Real-time Usage Card
-              _buildRealtimeUsageCard(isDark),
-
-              const SizedBox(height: Insets.lg),
-
-              // Energy Usage Chart
-              _buildCard(
-                isDark: isDark,
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        Text(
-                          'Energy Usage Trend',
-                          style: TextStyle(
-                            fontWeight: FontWeight.w600,
-                            fontSize: 16,
-                            color:
-                                isDark
-                                    ? AppColor.textPrimaryDark
-                                    : AppColor.textPrimary,
-                          ),
-                        ),
-                        _buildTrendIndicator(5.2, isDark),
-                      ],
-                    ),
-                    const SizedBox(height: Insets.md),
-                    Text(
-                      'Average: 6.3 kWh/day',
-                      style: TextStyle(
-                        color:
-                            isDark
-                                ? AppColor.textSecondaryDark
-                                : AppColor.textSecondary,
-                        fontSize: 12,
-                      ),
-                    ),
-                    const SizedBox(height: Insets.lg),
-                    _buildLineChart(isDark),
-                  ],
-                ),
+        child: Stack(
+          children: [
+            SingleChildScrollView(
+              padding: EdgeInsets.all(Insets.sm),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  MonitoringHeaderCard(selectedPeriod: selectedPeriod),
+                  SizedBox(height: Insets.lg),
+                  _buildPeriodSelector(context),
+                  SizedBox(height: Insets.md),
+                  MonitoringChartCard(period: selectedPeriod),
+                  SizedBox(height: Insets.md),
+                  MonitoringStatusOverview(),
+                  SizedBox(height: Insets.md),
+                  // Predictive Consumption Feature
+                  _buildPredictionSection(context),
+                  SizedBox(height: Insets.md),
+                  // Data Import/Export Feature
+                  _buildImportExportSection(context),
+                ],
               ),
-
-              const SizedBox(height: Insets.lg),
-
-              // Volume Meter Readings
-              _buildCard(
-                isDark: isDark,
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        Text(
-                          'Daily Consumption',
-                          style: TextStyle(
-                            fontWeight: FontWeight.w600,
-                            fontSize: 16,
-                            color:
-                                isDark
-                                    ? AppColor.textPrimaryDark
-                                    : AppColor.textPrimary,
-                          ),
-                        ),
-                        Container(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: Insets.sm,
-                            vertical: Insets.xm,
-                          ),
-                          decoration: BoxDecoration(
-                            color: AppColor.lowConsumption.withOpacity(0.1),
-                            borderRadius: BorderRadius.circular(12),
-                          ),
-                          child: Text(
-                            'Normal',
-                            style: TextStyle(
-                              color: AppColor.lowConsumption,
-                              fontSize: 12,
-                              fontWeight: FontWeight.w500,
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: Insets.lg),
-                    _buildBarChart(isDark),
-                  ],
-                ),
+            ),
+            if (_isLoading)
+              Container(
+                color: Colors.black.withAlpha(64),
+                child: const Center(child: CircularProgressIndicator()),
               ),
-
-              const SizedBox(height: Insets.lg),
-
-              // Enhanced Predictions & Insights
-              _buildPredictionInsights(isDark),
-
-              const SizedBox(height: Insets.lg),
-
-              // Efficiency Metrics
-              _buildEfficiencyMetrics(isDark),
-
-              const SizedBox(height: Insets.lg),
-
-              // Quick Actions
-              _buildQuickActions(isDark),
-            ],
-          ),
+          ],
         ),
       ),
     );
   }
 
-  Widget _buildStatusOverview(bool isDark) {
+  Widget _buildPeriodSelector(BuildContext context) {
     return Row(
       children: [
-        Expanded(
-          child: _buildStatusCard(
-            icon: Icons.flash_on,
-            title: 'Current Rate',
-            value: '₱10.25',
-            subtitle: 'per kWh',
-            color: AppColor.accentGreen,
-            isDark: isDark,
-          ),
-        ),
-        const SizedBox(width: Insets.md),
-        Expanded(
-          child: _buildStatusCard(
-            icon: Icons.trending_up,
-            title: 'Today\'s Usage',
-            value: '7.2',
-            subtitle: 'kWh',
-            color: AppColor.mediumConsumption,
-            isDark: isDark,
-          ),
-        ),
-        const SizedBox(width: Insets.md),
-        Expanded(
-          child: _buildStatusCard(
-            icon: Icons.account_balance_wallet,
-            title: 'Est. Cost',
-            value: '₱73.80',
-            subtitle: 'today',
-            color: AppColor.primary,
-            isDark: isDark,
-          ),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildStatusCard({
-    required IconData icon,
-    required String title,
-    required String value,
-    required String subtitle,
-    required Color color,
-    required bool isDark,
-  }) {
-    return Container(
-      padding: Insets.allMd,
-      decoration: BoxDecoration(
-        color: isDark ? AppColor.surfaceDark : AppColor.background,
-        borderRadius: BorderRadius.circular(16),
-        boxShadow: [
-          BoxShadow(
-            color: isDark ? Colors.black26 : Colors.black12,
-            blurRadius: 8,
-            offset: const Offset(0, 2),
-          ),
-        ],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Icon(icon, color: color, size: 20),
-          const SizedBox(height: Insets.sm),
-          Text(
-            title,
-            style: TextStyle(
-              fontSize: 11,
-              color:
-                  isDark ? AppColor.textSecondaryDark : AppColor.textSecondary,
-            ),
-          ),
-          const SizedBox(height: 2),
-          Text(
-            value,
-            style: TextStyle(
-              fontSize: 16,
-              fontWeight: FontWeight.bold,
-              color: isDark ? AppColor.textPrimaryDark : AppColor.textPrimary,
-            ),
-          ),
-          Text(
-            subtitle,
-            style: TextStyle(
-              fontSize: 10,
-              color:
-                  isDark ? AppColor.textSecondaryDark : AppColor.textSecondary,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildPeriodSelector(bool isDark) {
-    return Row(
-      children: [
-        Text(
-          'Period: ',
-          style: TextStyle(
-            fontWeight: FontWeight.w500,
-            color: isDark ? AppColor.textPrimaryDark : AppColor.textPrimary,
-          ),
-        ),
-        const SizedBox(width: Insets.sm),
+        Text('Period:', style: ResponsiveText.body(context)),
+        SizedBox(width: Insets.sm),
         Expanded(
           child: SingleChildScrollView(
             scrollDirection: Axis.horizontal,
@@ -274,9 +76,10 @@ class _MonitoringPageState extends State<MonitoringPage> {
                     final isSelected = period == selectedPeriod;
                     return GestureDetector(
                       onTap: () => setState(() => selectedPeriod = period),
-                      child: Container(
-                        margin: const EdgeInsets.only(right: Insets.sm),
-                        padding: const EdgeInsets.symmetric(
+                      child: AnimatedContainer(
+                        duration: const Duration(milliseconds: 200),
+                        margin: EdgeInsets.only(right: Insets.sm),
+                        padding: EdgeInsets.symmetric(
                           horizontal: Insets.md,
                           vertical: Insets.sm,
                         ),
@@ -284,34 +87,28 @@ class _MonitoringPageState extends State<MonitoringPage> {
                           color:
                               isSelected
                                   ? AppColor.primary
-                                  : (isDark
-                                      ? AppColor.surfaceDark
-                                      : AppColor.background),
+                                  : Theme.of(context).colorScheme.surface,
                           borderRadius: BorderRadius.circular(20),
                           border:
                               isSelected
                                   ? null
                                   : Border.all(
-                                    color:
-                                        isDark
-                                            ? AppColor.disabled
-                                            : AppColor.disabled,
+                                    color: AppColor.disabled,
                                     width: 1,
                                   ),
                         ),
                         child: Text(
                           period,
-                          style: TextStyle(
+                          style: ResponsiveText.label(context).copyWith(
                             color:
                                 isSelected
                                     ? Colors.white
-                                    : (isDark
-                                        ? AppColor.textSecondaryDark
-                                        : AppColor.textSecondary),
-                            fontSize: 12,
+                                    : Theme.of(
+                                      context,
+                                    ).textTheme.bodyMedium?.color,
                             fontWeight:
                                 isSelected
-                                    ? FontWeight.w500
+                                    ? FontWeight.w600
                                     : FontWeight.normal,
                           ),
                         ),
@@ -325,647 +122,242 @@ class _MonitoringPageState extends State<MonitoringPage> {
     );
   }
 
-  Widget _buildRealtimeUsageCard(bool isDark) {
-    return _buildCard(
-      isDark: isDark,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Text(
-                'Real-time Usage',
-                style: TextStyle(
-                  fontWeight: FontWeight.w600,
-                  fontSize: 16,
-                  color:
-                      isDark ? AppColor.textPrimaryDark : AppColor.textPrimary,
-                ),
-              ),
-              Container(
-                padding: const EdgeInsets.all(6),
-                decoration: BoxDecoration(
-                  color: AppColor.accentGreen.withOpacity(0.1),
-                  shape: BoxShape.circle,
-                ),
-                child: Icon(Icons.circle, color: AppColor.accentGreen, size: 8),
-              ),
-            ],
-          ),
-          const SizedBox(height: Insets.lg),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Text(
-                '2.4 kW',
-                style: TextStyle(
-                  fontSize: 32,
-                  fontWeight: FontWeight.bold,
-                  color:
-                      isDark ? AppColor.textPrimaryDark : AppColor.textPrimary,
-                ),
-              ),
-              Icon(Iconsax.convertshape4, color: isDark? AppColor.textPrimaryDark.withAlpha(128): AppColor.textPrimary.withAlpha(128),),
-              Text(
-                '₱00.0000',
-                style: TextStyle(
-                  fontSize: 24,
-                  fontWeight: FontWeight.bold,
-                  color:
-                      isDark ? AppColor.textPrimaryDark : AppColor.textPrimary,
-                ),
-              ),
-            ],
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildTrendIndicator(double percentage, bool isDark) {
-    final isPositive = percentage >= 0;
-    return Container(
-      padding: const EdgeInsets.symmetric(
-        horizontal: Insets.sm,
-        vertical: Insets.xm,
-      ),
-      decoration: BoxDecoration(
-        color: (isPositive ? AppColor.accentRed : AppColor.accentGreen)
-            .withOpacity(0.1),
-        borderRadius: BorderRadius.circular(12),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(
-            isPositive ? Icons.trending_up : Icons.trending_down,
-            color: isPositive ? AppColor.accentRed : AppColor.accentGreen,
-            size: 12,
-          ),
-          const SizedBox(width: 2),
-          Text(
-            '${percentage.abs()}%',
-            style: TextStyle(
-              color: isPositive ? AppColor.accentRed : AppColor.accentGreen,
-              fontSize: 11,
-              fontWeight: FontWeight.w500,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildPredictionInsights(bool isDark) {
-    return Column(
-      children: [
-        _buildCard(
-          isDark: isDark,
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                'Monthly Prediction',
-                style: TextStyle(
-                  fontWeight: FontWeight.w600,
-                  fontSize: 16,
-                  color:
-                      isDark ? AppColor.textPrimaryDark : AppColor.textPrimary,
-                ),
-              ),
-              const SizedBox(height: Insets.lg),
-              Row(
-                children: [
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          'Projected Usage',
-                          style: TextStyle(
-                            fontSize: 12,
-                            color:
-                                isDark
-                                    ? AppColor.textSecondaryDark
-                                    : AppColor.textSecondary,
-                          ),
-                        ),
-                        const SizedBox(height: 2),
-                        Text(
-                          '186 kWh',
-                          style: TextStyle(
-                            fontSize: 20,
-                            fontWeight: FontWeight.bold,
-                            color:
-                                isDark
-                                    ? AppColor.textPrimaryDark
-                                    : AppColor.textPrimary,
-                          ),
-                        ),
-                        Text(
-                          'vs 195 kWh last month',
-                          style: TextStyle(
-                            fontSize: 10,
-                            color: AppColor.accentGreen,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  Container(
-                    width: 60,
-                    height: 60,
-                    decoration: BoxDecoration(
-                      shape: BoxShape.circle,
-                      color: AppColor.accentGreen.withOpacity(0.1),
-                    ),
-                    child: Stack(
-                      children: [
-                        Center(
-                          child: SizedBox(
-                            width: 40,
-                            height: 40,
-                            child: CircularProgressIndicator(
-                              value: 0.68,
-                              strokeWidth: 4,
-                              backgroundColor: AppColor.disabled.withOpacity(
-                                0.3,
-                              ),
-                              valueColor: AlwaysStoppedAnimation<Color>(
-                                AppColor.accentGreen,
-                              ),
-                            ),
-                          ),
-                        ),
-                        Center(
-                          child: Text(
-                            '68%',
-                            style: TextStyle(
-                              fontSize: 11,
-                              fontWeight: FontWeight.bold,
-                              color: AppColor.accentGreen,
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: Insets.md),
-              LinearProgressIndicator(
-                value: 0.68,
-                backgroundColor:
-                    isDark
-                        ? AppColor.disabled.withOpacity(0.2)
-                        : AppColor.disabled.withOpacity(0.3),
-                color: AppColor.accentGreen,
-                minHeight: 6,
-              ),
-              const SizedBox(height: Insets.sm),
-              Text(
-                '22 days remaining in billing cycle',
-                style: TextStyle(
-                  fontSize: 11,
-                  color:
-                      isDark
-                          ? AppColor.textSecondaryDark
-                          : AppColor.textSecondary,
-                ),
-              ),
-            ],
-          ),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildEfficiencyMetrics(bool isDark) {
-    return Row(
-      children: [
-        Expanded(
-          child: _buildCard(
-            isDark: isDark,
-            child: Column(
-              children: [
-                Icon(Icons.eco, color: AppColor.accentGreen, size: 24),
-                const SizedBox(height: Insets.sm),
-                Text(
-                  'Efficiency Score',
-                  style: TextStyle(
-                    fontSize: 12,
-                    color:
-                        isDark
-                            ? AppColor.textSecondaryDark
-                            : AppColor.textSecondary,
-                  ),
-                ),
-                const SizedBox(height: 2),
-                Text(
-                  '8.2/10',
-                  style: TextStyle(
-                    fontSize: 18,
-                    fontWeight: FontWeight.bold,
-                    color: AppColor.accentGreen,
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
-        const SizedBox(width: Insets.md),
-        Expanded(
-          child: _buildCard(
-            isDark: isDark,
-            child: Column(
-              children: [
-                Icon(
-                  Icons.savings,
-                  color: AppColor.mediumConsumption,
-                  size: 24,
-                ),
-                const SizedBox(height: Insets.sm),
-                Text(
-                  'Savings This Month',
-                  style: TextStyle(
-                    fontSize: 12,
-                    color:
-                        isDark
-                            ? AppColor.textSecondaryDark
-                            : AppColor.textSecondary,
-                  ),
-                ),
-                const SizedBox(height: 2),
-                Text(
-                  '₱92.50',
-                  style: TextStyle(
-                    fontSize: 18,
-                    fontWeight: FontWeight.bold,
-                    color: AppColor.mediumConsumption,
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildQuickActions(bool isDark) {
-    return _buildCard(
-      isDark: isDark,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            'Quick Actions',
-            style: TextStyle(
-              fontWeight: FontWeight.w600,
-              fontSize: 16,
-              color: isDark ? AppColor.textPrimaryDark : AppColor.textPrimary,
-            ),
-          ),
-          const SizedBox(height: Insets.lg),
-          Row(
-            children: [
-              Expanded(
-                child: _buildActionButton(
-                  icon: Iconsax.bill,
-                  label: 'View Bill',
-                  onTap: () {},
-                  isDark: isDark,
-                ),
-              ),
-              const SizedBox(width: Insets.md),
-              Expanded(
-                child: _buildActionButton(
-                  icon: Iconsax.export,
-                  label: 'Export Data',
-                  onTap: () {},
-                  isDark: isDark,
-                ),
-              ),
-              const SizedBox(width: Insets.md),
-              Expanded(
-                child: _buildActionButton(
-                  icon: Iconsax.import,
-                  label: 'Import Data',
-                  onTap: () {},
-                  isDark: isDark,
-                ),
-              ),
-            ],
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildActionButton({
-    required IconData icon,
-    required String label,
-    required VoidCallback onTap,
-    required bool isDark,
-  }) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        padding: Insets.allMd,
-        decoration: BoxDecoration(
-          color: isDark ? AppColor.backgroundDark : AppColor.surface,
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(
-            color:
-                isDark
-                    ? AppColor.disabled.withOpacity(0.2)
-                    : AppColor.disabled.withOpacity(0.3),
-          ),
-        ),
-        child: Column(
-          children: [
-            Icon(
-              icon,
-              color:
-                  isDark ? AppColor.textSecondaryDark : AppColor.textSecondary,
-              size: 20,
-            ),
-            const SizedBox(height: Insets.sm),
-            Text(
-              label,
-              style: TextStyle(
-                fontSize: 11,
-                color:
-                    isDark
-                        ? AppColor.textSecondaryDark
-                        : AppColor.textSecondary,
-              ),
-              textAlign: TextAlign.center,
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildCard({required Widget child, required bool isDark}) {
+  Widget _buildPredictionSection(BuildContext context) {
+    // Example: Use MonitoringPrediction with dummy data
+    final historical = [
+      180.5,
+      195.2,
+      170.8,
+      200.1,
+      210.0,
+      205.5,
+      198.0,
+      215.3,
+      220.1,
+      210.7,
+      205.0,
+      199.8,
+    ];
+    final prediction = MonitoringPrediction.predictNextPeriod(historical);
+    final double predicted = prediction['predicted'] ?? 0;
+    final double previous = prediction['previous'] ?? 0;
+    final double percentChange =
+        previous == 0 ? 0 : ((predicted - previous) / previous) * 100;
+    final bool isHigher = predicted > previous;
+    final String percentText =
+        '${percentChange.abs().toStringAsFixed(1)}% ${isHigher ? 'higher' : 'lower'} than last month';
+    final String suggestion =
+        isHigher
+            ? 'Consider reducing AC usage or unplugging idle devices to save energy.'
+            : 'Great job! Your consumption is trending down.';
     return Container(
       width: double.infinity,
-      padding: Insets.allLg,
+      padding: EdgeInsets.all(Insets.lg),
       decoration: BoxDecoration(
-        color: isDark ? AppColor.surfaceDark : AppColor.background,
+        color: Theme.of(context).colorScheme.surface,
         borderRadius: BorderRadius.circular(16),
         boxShadow: [
           BoxShadow(
-            color: isDark ? Colors.black26 : Colors.black12,
+            color: Colors.black.withAlpha((0.05 * 255).toInt()),
             blurRadius: 8,
-            offset: const Offset(0, 2),
+            offset: Offset(0, 2),
           ),
         ],
       ),
-      child: child,
-    );
-  }
-
-  Widget _buildLineChart(bool isDark) {
-    final now = DateTime.now();
-    final usageSpots = [
-      FlSpot(0, 5.2),
-      FlSpot(1, 6.1),
-      FlSpot(2, 5.8),
-      FlSpot(3, 7.2),
-      FlSpot(4, 6.5),
-      FlSpot(5, 6.9),
-      FlSpot(6, 7.5),
-    ];
-
-    return SizedBox(
-      height: 180,
-      child: LineChart(
-        LineChartData(
-          gridData: FlGridData(
-            show: true,
-            horizontalInterval: 1,
-            getDrawingHorizontalLine:
-                (value) => FlLine(
-                  color:
-                      isDark
-                          ? AppColor.disabled.withOpacity(0.1)
-                          : AppColor.disabled.withOpacity(0.2),
-                  strokeWidth: 1,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text('Predictive Consumption', style: ResponsiveText.stat(context)),
+          SizedBox(height: Insets.md),
+          Row(
+            children: [
+              // Icon(Iconsax.present, color: AppColor.accentGreen, size: 24),
+              // SizedBox(width: Insets.md),
+              Text('Expected:', style: ResponsiveText.stat(context)),
+              SizedBox(width: Insets.sm),
+              Text(
+                '${predicted.toStringAsFixed(1)} kWh',
+                style: ResponsiveText.body(
+                  context,
+                ).copyWith(fontWeight: FontWeight.bold),
+              ),
+              SizedBox(width: Insets.lg),
+            ],
+          ),
+          Row(
+            children: [
+              // Icon(Iconsax.previous4, color: AppColor.accentGreen, size: 24),
+              Text('Previous:', style: ResponsiveText.body(context)),
+              SizedBox(width: Insets.sm),
+              Text(
+                '${previous.toStringAsFixed(1)} kWh',
+                style: ResponsiveText.body(
+                  context,
+                ).copyWith(color: AppColor.disabled),
+              ),
+            ],
+          ),
+          SizedBox(height: Insets.sm),
+          Row(
+            children: [
+              Icon(
+                isHigher ? Iconsax.arrow_up_2 : Iconsax.arrow_down_1,
+                color: isHigher ? AppColor.accentRed : AppColor.accentGreen,
+                size: 18,
+              ),
+              SizedBox(width: Insets.sm),
+              Text(
+                percentText,
+                style: ResponsiveText.label(context).copyWith(
+                  color: isHigher ? AppColor.accentRed : AppColor.accentGreen,
+                  fontWeight: FontWeight.w600,
                 ),
-            getDrawingVerticalLine:
-                (value) => FlLine(
-                  color:
-                      isDark
-                          ? AppColor.disabled.withOpacity(0.1)
-                          : AppColor.disabled.withOpacity(0.2),
-                  strokeWidth: 1,
+              ),
+            ],
+          ),
+          SizedBox(height: Insets.md),
+          Container(
+            padding: EdgeInsets.all(Insets.md),
+            decoration: BoxDecoration(
+              color:
+                  isHigher
+                      ? AppColor.accentRed.withAlpha(26)
+                      : AppColor.accentGreen.withAlpha(26),
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Row(
+              children: [
+                Icon(
+                  Iconsax.lamp_on,
+                  color: isHigher ? AppColor.accentRed : AppColor.accentGreen,
+                  size: 18,
                 ),
-          ),
-          titlesData: FlTitlesData(
-            bottomTitles: AxisTitles(
-              sideTitles: SideTitles(
-                showTitles: true,
-                interval: 1,
-                getTitlesWidget: (value, _) {
-                  final date = now.subtract(Duration(days: 6 - value.toInt()));
-                  return Padding(
-                    padding: const EdgeInsets.only(top: 8),
-                    child: Text(
-                      DateFormat('E').format(date),
-                      style: TextStyle(
-                        fontSize: 10,
-                        color:
-                            isDark
-                                ? AppColor.textSecondaryDark
-                                : AppColor.textSecondary,
-                      ),
-                    ),
-                  );
-                },
-              ),
-            ),
-            leftTitles: AxisTitles(
-              sideTitles: SideTitles(
-                showTitles: true,
-                interval: 1,
-                reservedSize: 35,
-                getTitlesWidget: (value, _) {
-                  return Text(
-                    '${value.toInt()}',
-                    style: TextStyle(
-                      fontSize: 10,
-                      color:
-                          isDark
-                              ? AppColor.textSecondaryDark
-                              : AppColor.textSecondary,
-                    ),
-                  );
-                },
-              ),
-            ),
-            topTitles: const AxisTitles(
-              sideTitles: SideTitles(showTitles: false),
-            ),
-            rightTitles: const AxisTitles(
-              sideTitles: SideTitles(showTitles: false),
-            ),
-          ),
-          borderData: FlBorderData(show: false),
-          lineBarsData: [
-            LineChartBarData(
-              spots: usageSpots,
-              isCurved: true,
-              color: AppColor.primary,
-              barWidth: 3,
-              belowBarData: BarAreaData(
-                show: true,
-                color: AppColor.primary.withOpacity(0.1),
-              ),
-              dotData: FlDotData(
-                show: true,
-                getDotPainter: (spot, percent, barData, index) {
-                  return FlDotCirclePainter(
-                    radius: 4,
-                    color: AppColor.background,
-                    strokeWidth: 2,
-                    strokeColor: AppColor.primary,
-                  );
-                },
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildBarChart(bool isDark) {
-    final now = DateTime.now();
-    final meterData = [5.2, 6.1, 5.8, 7.2, 6.5, 6.9, 7.5];
-
-    return SizedBox(
-      height: 140,
-      child: BarChart(
-        BarChartData(
-          gridData: FlGridData(show: false),
-          titlesData: FlTitlesData(
-            bottomTitles: AxisTitles(
-              sideTitles: SideTitles(
-                showTitles: true,
-                interval: 1,
-                getTitlesWidget: (value, _) {
-                  final date = now.subtract(Duration(days: 6 - value.toInt()));
-                  return Padding(
-                    padding: const EdgeInsets.only(top: 8),
-                    child: Text(
-                      DateFormat('E').format(date),
-                      style: TextStyle(
-                        fontSize: 10,
-                        color:
-                            isDark
-                                ? AppColor.textSecondaryDark
-                                : AppColor.textSecondary,
-                      ),
-                    ),
-                  );
-                },
-              ),
-            ),
-            leftTitles: AxisTitles(
-              sideTitles: SideTitles(
-                showTitles: true,
-                interval: 1,
-                reservedSize: 35,
-                getTitlesWidget: (value, _) {
-                  return Text(
-                    '${value.toInt()}',
-                    style: TextStyle(
-                      fontSize: 10,
-                      color:
-                          isDark
-                              ? AppColor.textSecondaryDark
-                              : AppColor.textSecondary,
-                    ),
-                  );
-                },
-              ),
-            ),
-            topTitles: const AxisTitles(
-              sideTitles: SideTitles(showTitles: false),
-            ),
-            rightTitles: const AxisTitles(
-              sideTitles: SideTitles(showTitles: false),
-            ),
-          ),
-          borderData: FlBorderData(show: false),
-          barGroups: List.generate(
-            meterData.length,
-            (i) => BarChartGroupData(
-              x: i,
-              barRods: [
-                BarChartRodData(
-                  toY: meterData[i],
-                  width: 16,
-                  color: _getConsumptionColor(meterData[i]),
-                  borderRadius: const BorderRadius.vertical(
-                    top: Radius.circular(4),
-                  ),
+                SizedBox(width: Insets.sm),
+                Expanded(
+                  child: Text(suggestion, style: ResponsiveText.body(context)),
                 ),
               ],
             ),
           ),
-        ),
+        ],
       ),
     );
   }
 
-  Color _getConsumptionColor(double value) {
-    if (value < 6.0) return AppColor.lowConsumption;
-    if (value < 7.0) return AppColor.mediumConsumption;
-    return AppColor.highConsumption;
-  }
-}
-
-Widget _buildTopStats() {
-    return Column(
+  Widget _buildImportExportSection(BuildContext context) {
+    return Row(
       children: [
-        Row(
-          children: const [
-            Text(
-              'Current Power Rate:',
-              style: TextStyle(fontWeight: FontWeight.bold),
+        Expanded(
+          child: ElevatedButton.icon(
+            icon: Icon(Iconsax.import, color: AppColor.primary),
+            label: Text('Import Data', style: ResponsiveText.body(context)),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AppColor.surface,
+              foregroundColor: AppColor.primary,
+              elevation: 0,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+              ),
             ),
-            Spacer(),
-            Text('₱10.25 / kWh', style: TextStyle(color: Colors.green)),
-          ],
+            onPressed: () async {
+              setState(() => _isLoading = true);
+              final scaffoldMessenger = ScaffoldMessenger.of(context);
+              try {
+                FilePickerResult? result = await FilePicker.platform.pickFiles(
+                  type: FileType.custom,
+                  allowedExtensions: ['json', 'csv'],
+                );
+                if (result != null && result.files.single.path != null) {
+                  final file = File(result.files.single.path!);
+                  final content = await file.readAsString();
+                  // For now, just check if file is not empty
+                  if (content.isNotEmpty) {
+                    // TODO: Parse and use data
+                    scaffoldMessenger.showSnackBar(
+                      SnackBar(
+                        content: Text('Import successful!'),
+                        backgroundColor: AppColor.accentGreen,
+                      ),
+                    );
+                  } else {
+                    scaffoldMessenger.showSnackBar(
+                      SnackBar(
+                        content: Text('Import failed: File is empty.'),
+                        backgroundColor: AppColor.accentRed,
+                      ),
+                    );
+                  }
+                } else {
+                  // User canceled
+                }
+              } catch (e) {
+                scaffoldMessenger.showSnackBar(
+                  SnackBar(
+                    content: Text('Import failed: ${e.toString()}'),
+                    backgroundColor: AppColor.accentRed,
+                  ),
+                );
+              } finally {
+                setState(() => _isLoading = false);
+              }
+            },
+          ),
         ),
-        const SizedBox(height: 4),
-        Row(
-          children: const [
-            Text('Registered Address:'),
-            Spacer(),
-            Text('P-7, San Vicente Alto', style: TextStyle(fontSize: 12)),
-          ],
-        ),
-        const SizedBox(height: 4),
-        Row(
-          children: const [
-            Text('City:'),
-            Spacer(),
-            Text('Oroquieta City', style: TextStyle(fontSize: 12)),
-          ],
-        ),
-        const SizedBox(height: 4),
-        Row(
-          children: const [
-            Text('Municipality:'),
-            Spacer(),
-            Text('Misamis Occidentals', style: TextStyle(fontSize: 12)),
-          ],
+        SizedBox(width: Insets.md),
+        Expanded(
+          child: ElevatedButton.icon(
+            icon: Icon(Iconsax.export, color: AppColor.primary),
+            label: Text('Export Data', style: ResponsiveText.body(context)),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AppColor.surface,
+              foregroundColor: AppColor.primary,
+              elevation: 0,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+              ),
+            ),
+            onPressed: () async {
+              setState(() => _isLoading = true);
+              final scaffoldMessenger = ScaffoldMessenger.of(context);
+              try {
+                // Mock data to export
+                final data = [
+                  {'date': '2024-05-01', 'usage': 6.1},
+                  {'date': '2024-05-02', 'usage': 5.8},
+                  {'date': '2024-05-03', 'usage': 7.2},
+                ];
+                String jsonString = jsonEncode(data);
+                Directory? directory;
+                if (Platform.isAndroid) {
+                  directory = await getExternalStorageDirectory();
+                } else {
+                  directory = await getApplicationDocumentsDirectory();
+                }
+                String fileName =
+                    'energy_data_${DateTime.now().millisecondsSinceEpoch}.json';
+                String filePath = '${directory!.path}/$fileName';
+                File file = File(filePath);
+                await file.writeAsString(jsonString);
+                scaffoldMessenger.showSnackBar(
+                  SnackBar(
+                    content: Text('Exported to $fileName'),
+                    backgroundColor: AppColor.accentGreen,
+                  ),
+                );
+              } catch (e) {
+                scaffoldMessenger.showSnackBar(
+                  SnackBar(
+                    content: Text('Export failed: ${e.toString()}'),
+                    backgroundColor: AppColor.accentRed,
+                  ),
+                );
+              } finally {
+                setState(() => _isLoading = false);
+              }
+            },
+          ),
         ),
       ],
     );
   }
+}

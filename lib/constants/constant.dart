@@ -37,7 +37,9 @@ class AppColor {
   static const Color surfaceDark = Color(0xFF23262F); // Dark gray
 
   // Accent & Interactive Colors
-  static const Color accentGreen = Color(0xFF27AE60,); // Energy Green (On/Active)
+  static const Color accentGreen = Color(
+    0xFF27AE60,
+  ); // Energy Green (On/Active)
   static const Color accentRed = Color(0xFFE74C3C); // Alert Red (Off/Warning)
   static const Color disabled = Color(0xFFBDC3C7); // Warm Gray (Inactive)
 
@@ -60,7 +62,6 @@ final ThemeData lightTheme = ThemeData(
   colorScheme: ColorScheme.light(
     primary: AppColor.primary,
     secondary: AppColor.accentGreen,
-    background: AppColor.background,
     surface: AppColor.surface,
     error: AppColor.accentRed,
   ),
@@ -82,7 +83,6 @@ final ThemeData darkTheme = ThemeData(
   colorScheme: ColorScheme.dark(
     primary: AppColor.primaryDark,
     secondary: AppColor.accentGreen,
-    background: AppColor.backgroundDark,
     surface: AppColor.surfaceDark,
     error: AppColor.accentRed,
   ),
@@ -96,3 +96,46 @@ final ThemeData darkTheme = ThemeData(
     elevation: 0,
   ),
 );
+
+class ResponsiveText {
+  static double _scale(BuildContext context) {
+    final width = MediaQuery.of(context).size.width;
+    return (width / 375.0).clamp(0.85, 1.2);
+  }
+
+  static TextStyle body(BuildContext context) => TextStyle(
+    fontSize: 14 * _scale(context),
+    color: Theme.of(context).textTheme.bodyLarge?.color,
+    fontWeight: FontWeight.w400,
+  );
+
+  static TextStyle title(BuildContext context) => TextStyle(
+    fontSize: 20 * _scale(context),
+    color: Theme.of(context).textTheme.bodyLarge?.color,
+    fontWeight: FontWeight.bold,
+  );
+
+  static TextStyle label(BuildContext context) => TextStyle(
+    fontSize: 12 * _scale(context),
+    color: Theme.of(context).textTheme.bodyMedium?.color,
+    fontWeight: FontWeight.w500,
+  );
+
+  static TextStyle headline(BuildContext context) => TextStyle(
+    fontSize: 28 * _scale(context),
+    color: Theme.of(context).textTheme.bodyLarge?.color,
+    fontWeight: FontWeight.bold,
+  );
+
+  static TextStyle caption(BuildContext context) => TextStyle(
+    fontSize: 10 * _scale(context),
+    color: Theme.of(context).textTheme.bodyMedium?.color,
+    fontWeight: FontWeight.normal,
+  );
+
+  static TextStyle stat(BuildContext context) => TextStyle(
+    fontSize: 16 * _scale(context),
+    color: Theme.of(context).textTheme.bodyLarge?.color,
+    fontWeight: FontWeight.w600,
+  );
+}

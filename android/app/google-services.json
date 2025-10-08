@@ -1,0 +1,40 @@
+{
+  "project_info": {
+    "project_number": "281073543283",
+    "firebase_url": "https://capstonefinal593-default-rtdb.asia-southeast1.firebasedatabase.app",
+    "project_id": "capstonefinal593",
+    "storage_bucket": "capstonefinal593.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:281073543283:android:4afab462085088b265e206",
+        "android_client_info": {
+          "package_name": "com.example.exercise_app"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "281073543283-f9prvi1q4251jl8qpjjv7v38lnnqf3t6.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyA6W02Sm2ShrmNtmDTe9sOV1dQD3hGSf4M"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "281073543283-f9prvi1q4251jl8qpjjv7v38lnnqf3t6.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

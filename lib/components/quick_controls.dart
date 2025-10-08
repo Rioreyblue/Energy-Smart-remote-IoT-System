@@ -1,78 +1,127 @@
 import 'package:flutter/material.dart';
 import 'package:exercise_app/constants/constant.dart';
+import 'package:provider/provider.dart';
 import 'switch_card.dart';
-
-class QuickDeviceState {
-  final String name;
-  final IconData icon;
-  final bool isOn;
-  final String label;
-  final String cost;
-  final String timerText;
-  QuickDeviceState({
-    required this.name,
-    required this.icon,
-    required this.isOn,
-    required this.label,
-    required this.cost,
-    required this.timerText,
-  });
-}
+import '../controllers/home_controller.dart';
+import '../models/appliance_model.dart';
 
 class QuickControls extends StatelessWidget {
-  final List<QuickDeviceState> devices;
-  final void Function(int, bool) onToggle;
   final double Function(BuildContext, double) responsiveFontSize;
-  const QuickControls({
-    required this.devices,
-    required this.onToggle,
-    required this.responsiveFontSize,
-    super.key,
-  });
+  const QuickControls({required this.responsiveFontSize, super.key});
 
   @override
   Widget build(BuildContext context) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          'Quick Controls',
-          style: TextStyle(
-            fontSize: responsiveFontSize(context, 20),
-            fontWeight: FontWeight.bold,
-            color: Theme.of(context).textTheme.bodyLarge?.color,
-          ),
-        ),
-        SizedBox(height: Insets.md),
-        Row(
+    return Consumer<HomeController>(
+      builder: (context, controller, child) {
+        final appliances = controller.appliances;
+
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Expanded(child: _buildDeviceCard(context, 0)),
-            SizedBox(width: Insets.sm),
-            Expanded(child: _buildDeviceCard(context, 1)),
+            Text(
+              'Quick Controls',
+              style: TextStyle(
+                fontSize: responsiveFontSize(context, 20),
+                fontWeight: FontWeight.bold,
+                color: Theme.of(context).textTheme.bodyLarge?.color,
+              ),
+            ),
+            SizedBox(height: Insets.md),
+            if (appliances.isNotEmpty) ...[
+              Row(
+                children: [
+                  Expanded(
+                    child: _buildDeviceCard(context, appliances[0], controller),
+                  ),
+                  SizedBox(width: Insets.sm),
+                  Expanded(
+                    child:
+                        appliances.length > 1
+                            ? _buildDeviceCard(
+                              context,
+                              appliances[1],
+                              controller,
+                            )
+                            : const SizedBox(),
+                  ),
+                ],
+              ),
+              SizedBox(height: Insets.sm),
+              Row(
+                children: [
+                  Expanded(
+                    child:
+                        appliances.length > 2
+                            ? _buildDeviceCard(
+                              context,
+                              appliances[2],
+                              controller,
+                            )
+                            : const SizedBox(),
+                  ),
+                  SizedBox(width: Insets.sm),
+                  Expanded(
+                    child:
+                        appliances.length > 3
+                            ? _buildDeviceCard(
+                              context,
+                              appliances[3],
+                              controller,
+                            )
+                            : const SizedBox(),
+                  ),
+                ],
+              ),
+            ] else ...[
+              const Center(
+                child: Text('No appliances found. Please add some devices.'),
+              ),
+            ],
           ],
-        ),
-        SizedBox(height: Insets.sm),
-        Row(
-          children: [
-            Expanded(child: _buildDeviceCard(context, 2)),
-            SizedBox(width: Insets.sm),
-            Expanded(child: _buildDeviceCard(context, 3)),
-          ],
-        ),
-      ],
+        );
+      },
     );
   }
 
-  Widget _buildDeviceCard(BuildContext context, int index) {
-    final device = devices[index];
+  Widget _buildDeviceCard(
+    BuildContext context,
+    ApplianceModel appliance,
+    HomeController controller,
+  ) {
+    final cost = appliance.formatCost(
+      12.0,
+    ); // Default rate, should be configurable
+    final timerText = _formatTimerText(appliance);
+
     return SwitchCard(
-      name: device.name,
-      icon: device.icon,
-      isOn: device.isOn,
-      label: device.label,
-      cost: device.cost,
-      timerText: device.timerText,
-      onToggle: (value) => onToggle(index, value),
+      name: appliance.name,
+      icon: appliance.getIconData(),
+      isOn: appliance.isOn,
+      label: 'Cost',
+      cost: cost,
+      timerText: timerText,
+      onToggle: (value) => controller.toggleAppliance(appliance.uid, value),
     );
+  }
+
+  String _formatTimerText(ApplianceModel appliance) {
+    if (!appliance.isOn || appliance.startTime.isEmpty) {
+      return '0:00:00:00';
+    }
+
+    try {
+      final startTime = DateTime.parse(appliance.startTime);
+      final now = DateTime.now();
+      final duration = now.difference(startTime);
+
+      final days = duration.inDays;
+      final hours = duration.inHours % 24;
+      final minutes = duration.inMinutes % 60;
+      final seconds = duration.inSeconds % 60;
+
+      return '$days:${hours.toString().padLeft(2, '0')}:${minutes.toString().padLeft(2, '0')}:${seconds.toString().padLeft(2, '0')}';
+    } catch (e) {
+      return '0:00:00:00';
+    }
   }
 }

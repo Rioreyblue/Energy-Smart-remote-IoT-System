@@ -485,7 +485,7 @@ class _ChartCard extends StatelessWidget {
       margin: EdgeInsets.only(bottom: Insets.sm),
       padding: EdgeInsets.all(Insets.lg),
       decoration: BoxDecoration(
-        color: Theme.of(context).colorScheme.background,
+        color: Theme.of(context).colorScheme.surface,
         borderRadius: BorderRadius.circular(16),
         boxShadow: [
           BoxShadow(

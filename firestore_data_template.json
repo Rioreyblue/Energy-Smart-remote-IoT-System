@@ -1,0 +1,283 @@
+{
+  "users": {
+    "user_001": {
+      "name": "John Doe",
+      "email": "john.doe@example.com",
+      "mobile": "+1234567890",
+      "energyProvider": "Pacific Gas & Electric",
+      "role": "user",
+      "isApproved": true,
+      "adminNotes": "Verified user",
+      "dateJoined": "2024-01-15T10:30:00Z",
+      "userType": "residential",
+      "createdAt": "2024-01-15T10:30:00Z",
+      "updatedAt": "2024-10-04T15:30:00Z",
+      "goals": {
+        "energy_threshold": {
+          "energyThreshold": 500.0,
+          "thresholdAlertEnabled": true,
+          "createdAt": "2024-01-15T10:30:00Z",
+          "updatedAt": "2024-10-04T15:30:00Z"
+        }
+      },
+      "estimatedBill": {
+        "bill_001": {
+          "ratePerKwh": 0.25,
+          "previousReading": 1250.5,
+          "presentReading": 1280.3,
+          "startDate": "2024-09-01T00:00:00Z",
+          "endDate": "2024-10-01T00:00:00Z",
+          "consumption": 29.8,
+          "estimatedBill": 7.45,
+          "createdAt": "2024-10-01T08:00:00Z"
+        },
+        "bill_002": {
+          "ratePerKwh": 0.25,
+          "previousReading": 1200.0,
+          "presentReading": 1250.5,
+          "startDate": "2024-08-01T00:00:00Z",
+          "endDate": "2024-09-01T00:00:00Z",
+          "consumption": 50.5,
+          "estimatedBill": 12.63,
+          "createdAt": "2024-09-01T08:00:00Z"
+        }
+      },
+      "energy_usage_logs": {
+        "log_001": {
+          "deviceId": "main_meter",
+          "deviceName": "Main Energy Meter",
+          "consumption": 2.5,
+          "duration": 24,
+          "timestamp": "2024-10-04T15:30:00Z",
+          "ratePerKwh": 0.25,
+          "estimatedBill": 0.63
+        },
+        "log_002": {
+          "deviceId": "device_001",
+          "deviceName": "Living Room AC",
+          "consumption": 1.8,
+          "duration": 8,
+          "timestamp": "2024-10-04T14:00:00Z",
+          "ratePerKwh": 0.25,
+          "estimatedBill": 0.45
+        },
+        "log_003": {
+          "deviceId": "device_002",
+          "deviceName": "Refrigerator",
+          "consumption": 0.3,
+          "duration": 24,
+          "timestamp": "2024-10-04T12:00:00Z",
+          "ratePerKwh": 0.25,
+          "estimatedBill": 0.08
+        }
+      }
+    },
+    "user_002": {
+      "name": "Jane Smith",
+      "email": "jane.smith@example.com",
+      "mobile": "+1987654321",
+      "energyProvider": "Southern California Edison",
+      "role": "user",
+      "isApproved": true,
+      "adminNotes": "High usage customer",
+      "dateJoined": "2024-02-20T14:15:00Z",
+      "userType": "commercial",
+      "createdAt": "2024-02-20T14:15:00Z",
+      "updatedAt": "2024-10-04T15:30:00Z",
+      "goals": {
+        "energy_threshold": {
+          "energyThreshold": 1000.0,
+          "thresholdAlertEnabled": true,
+          "createdAt": "2024-02-20T14:15:00Z",
+          "updatedAt": "2024-10-04T15:30:00Z"
+        }
+      },
+      "estimatedBill": {
+        "bill_001": {
+          "ratePerKwh": 0.32,
+          "previousReading": 5000.0,
+          "presentReading": 5120.5,
+          "startDate": "2024-09-01T00:00:00Z",
+          "endDate": "2024-10-01T00:00:00Z",
+          "consumption": 120.5,
+          "estimatedBill": 38.56,
+          "createdAt": "2024-10-01T08:00:00Z"
+        }
+      },
+      "energy_usage_logs": {
+        "log_001": {
+          "deviceId": "main_meter",
+          "deviceName": "Main Energy Meter",
+          "consumption": 5.2,
+          "duration": 24,
+          "timestamp": "2024-10-04T15:30:00Z",
+          "ratePerKwh": 0.32,
+          "estimatedBill": 1.66
+        }
+      }
+    },
+    "admin_001": {
+      "name": "Admin User",
+      "email": "admin@energysmart.com",
+      "mobile": "+1555000000",
+      "energyProvider": "System Admin",
+      "role": "admin",
+      "isApproved": true,
+      "adminNotes": "System administrator",
+      "dateJoined": "2024-01-01T00:00:00Z",
+      "userType": "admin",
+      "createdAt": "2024-01-01T00:00:00Z",
+      "updatedAt": "2024-10-04T15:30:00Z"
+    }
+  },
+  "power_rates": {
+    "rate_001": {
+      "ratePerKwh": 0.25,
+      "effectiveDate": "2024-01-01T00:00:00Z",
+      "endDate": "2024-12-31T23:59:59Z",
+      "notes": "Standard residential rate",
+      "isActive": true,
+      "createdAt": "2024-01-01T00:00:00Z",
+      "createdBy": "admin_001"
+    },
+    "rate_002": {
+      "ratePerKwh": 0.32,
+      "effectiveDate": "2024-01-01T00:00:00Z",
+      "endDate": "2024-12-31T23:59:59Z",
+      "notes": "Commercial rate",
+      "isActive": true,
+      "createdAt": "2024-01-01T00:00:00Z",
+      "createdBy": "admin_001"
+    },
+    "rate_003": {
+      "ratePerKwh": 0.28,
+      "effectiveDate": "2024-06-01T00:00:00Z",
+      "endDate": "2024-08-31T23:59:59Z",
+      "notes": "Summer peak rate",
+      "isActive": false,
+      "createdAt": "2024-06-01T00:00:00Z",
+      "createdBy": "admin_001"
+    }
+  },
+  "support_chats": {
+    "chat_001": {
+      "userId": "user_001",
+      "adminId": "admin_001",
+      "status": "open",
+      "subject": "High energy bill concern",
+      "createdAt": "2024-10-04T10:00:00Z",
+      "updatedAt": "2024-10-04T15:30:00Z",
+      "messages": [
+        {
+          "messageId": "msg_001",
+          "senderId": "user_001",
+          "senderType": "user",
+          "message": "My energy bill seems unusually high this month. Can you help me understand why?",
+          "timestamp": "2024-10-04T10:00:00Z",
+          "isRead": true
+        },
+        {
+          "messageId": "msg_002",
+          "senderId": "admin_001",
+          "senderType": "admin",
+          "message": "I'll review your usage data and get back to you within 24 hours.",
+          "timestamp": "2024-10-04T10:15:00Z",
+          "isRead": true
+        }
+      ]
+    }
+  },
+  "tips": {
+    "tip_001": {
+      "title": "Use LED Light Bulbs",
+      "content": "LED bulbs use 75% less energy than incandescent bulbs and last 25 times longer. Replace your most-used light bulbs with LEDs to save energy and money.",
+      "category": "lighting",
+      "imageUrl": "https://example.com/images/led-bulbs.jpg",
+      "isActive": true,
+      "createdAt": "2024-01-15T00:00:00Z",
+      "createdBy": "admin_001"
+    },
+    "tip_002": {
+      "title": "Set Your Thermostat Efficiently",
+      "content": "Set your thermostat to 78°F (26°C) in summer and 68°F (20°C) in winter. Each degree you adjust can save 3-5% on your energy bill.",
+      "category": "heating_cooling",
+      "imageUrl": "https://example.com/images/thermostat.jpg",
+      "isActive": true,
+      "createdAt": "2024-01-15T00:00:00Z",
+      "createdBy": "admin_001"
+    },
+    "tip_003": {
+      "title": "Unplug Electronics When Not in Use",
+      "content": "Many electronics continue to draw power even when turned off. Unplug chargers, TVs, and other devices when not in use to save energy.",
+      "category": "appliances",
+      "imageUrl": "https://example.com/images/unplug.jpg",
+      "isActive": true,
+      "createdAt": "2024-01-15T00:00:00Z",
+      "createdBy": "admin_001"
+    }
+  },
+  "notifications": {
+    "notif_001": {
+      "userId": "user_001",
+      "title": "Energy Alert",
+      "message": "You have reached 80% of your energy threshold!",
+      "type": "threshold_alert",
+      "isRead": false,
+      "createdAt": "2024-10-04T14:59:00Z"
+    },
+    "notif_002": {
+      "userId": "user_001",
+      "title": "Bill Ready",
+      "message": "Your monthly energy bill is ready for review.",
+      "type": "bill_ready",
+      "isRead": true,
+      "createdAt": "2024-10-01T08:00:00Z"
+    }
+  },
+  "device_control": {
+    "device_001": {
+      "userId": "user_001",
+      "deviceName": "Living Room AC",
+      "deviceType": "air_conditioner",
+      "pin": 1,
+      "status": "ON",
+      "isOnline": true,
+      "lastSeen": "2024-10-04T15:30:00Z",
+      "createdAt": "2024-01-15T10:30:00Z",
+      "updatedAt": "2024-10-04T15:30:00Z"
+    },
+    "device_002": {
+      "userId": "user_001",
+      "deviceName": "Refrigerator",
+      "deviceType": "appliance",
+      "pin": 2,
+      "status": "ON",
+      "isOnline": true,
+      "lastSeen": "2024-10-04T15:30:00Z",
+      "createdAt": "2024-01-15T10:30:00Z",
+      "updatedAt": "2024-10-04T15:30:00Z"
+    },
+    "device_003": {
+      "userId": "user_002",
+      "deviceName": "Office Lights",
+      "deviceType": "lighting",
+      "pin": 1,
+      "status": "OFF",
+      "isOnline": false,
+      "lastSeen": "2024-10-04T12:00:00Z",
+      "createdAt": "2024-02-20T14:15:00Z",
+      "updatedAt": "2024-10-04T12:00:00Z"
+    }
+  },
+  "admins": {
+    "admin_001": {
+      "name": "Admin User",
+      "email": "admin@energysmart.com",
+      "role": "super_admin",
+      "permissions": ["read_all", "write_all", "manage_users", "manage_rates"],
+      "createdAt": "2024-01-01T00:00:00Z",
+      "isActive": true
+    }
+  }
+}
+

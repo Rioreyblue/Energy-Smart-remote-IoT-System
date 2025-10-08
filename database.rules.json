@@ -1,0 +1,36 @@
+{
+  "rules": {
+    "energySmart": {
+      "devices": {
+        "$deviceId": {
+          ".read": "auth != null",
+          ".write": "auth != null && (auth.uid == data.userId || root.child('admins').child(auth.uid).exists())"
+        }
+      },
+      "user_usage_summary": {
+        "$userId": {
+          ".read": "auth != null && auth.uid == $userId",
+          ".write": "auth != null && auth.uid == $userId"
+        }
+      },
+      "alerts": {
+        "$userId": {
+          ".read": "auth != null && auth.uid == $userId",
+          ".write": "auth != null && auth.uid == $userId"
+        }
+      }
+    },
+    "users": {
+      "$uid": {
+        ".read": "auth != null && auth.uid == $uid",
+        ".write": "auth != null && auth.uid == $uid"
+      }
+    },
+    "admins": {
+      "$uid": {
+        ".read": "auth != null && auth.uid == $uid",
+        ".write": "auth != null && root.child('admins').child(auth.uid).exists()"
+      }
+    }
+  }
+}

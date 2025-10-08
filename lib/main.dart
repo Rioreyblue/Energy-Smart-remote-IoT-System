@@ -1,11 +1,11 @@
-import 'package:exercise_app/pages/goals/goals_page.dart';
-import 'package:exercise_app/pages/monitoring/monitoring_page.dart';
-import 'package:exercise_app/pages/settings/settings_page.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:go_router/go_router.dart';
+import 'package:firebase_core/firebase_core.dart';
 import 'widgets/theme_provider.dart';
 import 'constants/constant.dart';
+import 'firebase_options.dart';
+import 'pages/auth/auth_wrapper.dart';
 import 'home_screen.dart';
 import 'pages/side_navigations/data_management_page.dart';
 import 'pages/side_navigations/bill_history_page.dart';
@@ -14,14 +14,15 @@ import 'pages/side_navigations/tips_advice_page.dart';
 import 'pages/side_navigations/faq_help_center_page.dart';
 import 'pages/side_navigations/feedback_page.dart';
 import 'pages/side_navigations/contact_admin_page.dart';
+import 'controllers/home_controller.dart';
 
 final GoRouter _router = GoRouter(
   routes: [
     GoRoute(
       path: '/',
-      builder: (context, state) => const HomeScreen(),
-
+      builder: (context, state) => const AuthWrapper(),
       routes: [
+        GoRoute(path: 'home', builder: (context, state) => const HomeScreen()),
         //pages
         // GoRoute(
         //   path: 'monitoring',
@@ -70,7 +71,9 @@ final GoRouter _router = GoRouter(
   ],
 );
 
-void main() {
+void main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
   runApp(const MyApp());
 }
 
@@ -79,8 +82,11 @@ class MyApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return ChangeNotifierProvider(
-      create: (_) => ThemeProvider(),
+    return MultiProvider(
+      providers: [
+        ChangeNotifierProvider(create: (_) => ThemeProvider()),
+        ChangeNotifierProvider(create: (_) => HomeController()),
+      ],
       child: Consumer<ThemeProvider>(
         builder: (context, themeProvider, _) {
           return MaterialApp.router(

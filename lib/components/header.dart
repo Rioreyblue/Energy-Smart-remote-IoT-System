@@ -42,7 +42,7 @@ class Header extends StatelessWidget {
           children: [
             Container(
               decoration: BoxDecoration(
-                color: Theme.of(context).colorScheme.background,
+                color: Theme.of(context).colorScheme.surface,
                 borderRadius: BorderRadius.circular(12),
                 boxShadow: [
                   BoxShadow(
@@ -61,7 +61,7 @@ class Header extends StatelessWidget {
             SizedBox(width: Insets.sm),
             Container(
               decoration: BoxDecoration(
-                color: Theme.of(context).colorScheme.background,
+                color: Theme.of(context).colorScheme.surface,
                 borderRadius: BorderRadius.circular(12),
                 boxShadow: [
                   BoxShadow(

@@ -3,6 +3,8 @@ import 'package:go_router/go_router.dart';
 import '../constants/constant.dart';
 import 'package:iconsax/iconsax.dart';
 import 'theme_switch_button.dart';
+import '../services/auth_service.dart';
+import '../widgets/app_snackbar.dart';
 
 class AppDrawer extends StatelessWidget {
   const AppDrawer({super.key});
@@ -100,6 +102,17 @@ class AppDrawer extends StatelessWidget {
                   subtitle: 'Get direct support',
                   route: '/contactAdmin',
                   iconColor: primaryColor,
+                  textColor: textPrimary,
+                  subtitleColor: textSecondary,
+                ),
+                const SizedBox(height: Insets.lg),
+                _buildSectionHeader(context, 'Account', primaryColor),
+                _buildLogoutItem(
+                  context,
+                  icon: Iconsax.logout,
+                  title: 'Sign Out',
+                  subtitle: 'Logout from your account',
+                  iconColor: AppColor.accentRed,
                   textColor: textPrimary,
                   subtitleColor: textSecondary,
                 ),
@@ -269,6 +282,100 @@ class AppDrawer extends StatelessWidget {
     );
   }
 
+  Widget _buildLogoutItem(
+    BuildContext context, {
+    required IconData icon,
+    required String title,
+    required String subtitle,
+    required Color iconColor,
+    required Color textColor,
+    required Color subtitleColor,
+  }) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    return Container(
+      margin: const EdgeInsets.symmetric(horizontal: Insets.sm, vertical: 2),
+      child: Material(
+        color: Colors.transparent,
+        borderRadius: BorderRadius.circular(Insets.md),
+        child: InkWell(
+          borderRadius: BorderRadius.circular(Insets.md),
+          onTap: () async {
+            Navigator.pop(context);
+            await _handleLogout(context);
+          },
+          child: Padding(
+            padding: const EdgeInsets.symmetric(
+              horizontal: Insets.lg,
+              vertical: Insets.md,
+            ),
+            child: Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(Insets.xm),
+                  decoration: BoxDecoration(
+                    color: iconColor.withAlpha(26), // 0.1 * 255 = 26
+                    borderRadius: BorderRadius.circular(Insets.sm),
+                  ),
+                  child: Icon(icon, color: iconColor, size: 20),
+                ),
+                const SizedBox(width: Insets.md),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        title,
+                        style: Theme.of(context).textTheme.bodyLarge?.copyWith(
+                          fontWeight: FontWeight.w500,
+                          fontSize: 16,
+                          color: textColor,
+                        ),
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        subtitle,
+                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                          color: subtitleColor.withAlpha(
+                            178,
+                          ), // 0.7 * 255 = 178
+                          fontSize: 12,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                Icon(
+                  Iconsax.arrow_right_3,
+                  color:
+                      isDark
+                          ? AppColor.disabled.withAlpha(178)
+                          : AppColor.primary.withAlpha(178),
+                  size: 16,
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Future<void> _handleLogout(BuildContext context) async {
+    try {
+      final authService = AuthService();
+      await authService.signOut();
+
+      if (context.mounted) {
+        AppSnackbar.showSuccess(context, 'Successfully signed out');
+        // Navigation will be handled by the auth wrapper
+      }
+    } catch (e) {
+      if (context.mounted) {
+        AppSnackbar.showError(context, 'Failed to sign out: ${e.toString()}');
+      }
+    }
+  }
+
   Widget _buildDrawerFooter(
     BuildContext context,
     bool isDark,
@@ -296,10 +403,7 @@ class AppDrawer extends StatelessWidget {
               vertical: Insets.sm,
             ),
             decoration: BoxDecoration(
-              color:
-                  isDark
-                      ? AppColor.backgroundDark
-                      : AppColor.background,
+              color: isDark ? AppColor.backgroundDark : AppColor.background,
               borderRadius: BorderRadius.circular(Insets.md),
             ),
             child: Row(

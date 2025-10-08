@@ -1,0 +1,224 @@
+{
+  "energySmart": {
+    "devices": {
+      "device_001": {
+        "status": "ON",
+        "voltage": 220.5,
+        "current": 0.45,
+        "power": 99.2,
+        "energy_kwh": 0.004,
+        "relay_state": true,
+        "userId": "user_001",
+        "deviceName": "Living Room AC",
+        "deviceType": "air_conditioner",
+        "last_updated": "2024-10-04T15:20:00Z",
+        "isOnline": true,
+        "temperature": 24.5,
+        "humidity": 45.2
+      },
+      "device_002": {
+        "status": "ON",
+        "voltage": 220.3,
+        "current": 0.12,
+        "power": 26.4,
+        "energy_kwh": 0.001,
+        "relay_state": true,
+        "userId": "user_001",
+        "deviceName": "Refrigerator",
+        "deviceType": "appliance",
+        "last_updated": "2024-10-04T15:20:00Z",
+        "isOnline": true,
+        "temperature": 4.0,
+        "humidity": 35.0
+      },
+      "device_003": {
+        "status": "OFF",
+        "voltage": 0.0,
+        "current": 0.0,
+        "power": 0.0,
+        "energy_kwh": 0.0,
+        "relay_state": false,
+        "userId": "user_002",
+        "deviceName": "Office Lights",
+        "deviceType": "lighting",
+        "last_updated": "2024-10-04T12:00:00Z",
+        "isOnline": false,
+        "brightness": 0,
+        "color": "#FFFFFF"
+      },
+      "device_004": {
+        "status": "ON",
+        "voltage": 220.1,
+        "current": 0.08,
+        "power": 17.6,
+        "energy_kwh": 0.0008,
+        "relay_state": true,
+        "userId": "user_001",
+        "deviceName": "Kitchen Lights",
+        "deviceType": "lighting",
+        "last_updated": "2024-10-04T15:20:00Z",
+        "isOnline": true,
+        "brightness": 80,
+        "color": "#FFFF00"
+      },
+      "device_005": {
+        "status": "ON",
+        "voltage": 220.7,
+        "current": 0.25,
+        "power": 55.2,
+        "energy_kwh": 0.002,
+        "relay_state": true,
+        "userId": "user_002",
+        "deviceName": "Server Room AC",
+        "deviceType": "air_conditioner",
+        "last_updated": "2024-10-04T15:20:00Z",
+        "isOnline": true,
+        "temperature": 18.0,
+        "humidity": 30.0
+      }
+    },
+    "user_usage_summary": {
+      "user_001": {
+        "total_energy_today": 2.45,
+        "total_energy_week": 14.23,
+        "total_energy_month": 64.10,
+        "peak_usage_hour": 14,
+        "average_daily_usage": 2.1,
+        "cost_today": 0.61,
+        "cost_week": 3.56,
+        "cost_month": 16.03,
+        "last_update": "2024-10-04T15:30:00Z",
+        "devices_count": 3,
+        "online_devices": 3,
+        "savings_percentage": 12.5
+      },
+      "user_002": {
+        "total_energy_today": 5.20,
+        "total_energy_week": 28.45,
+        "total_energy_month": 125.30,
+        "peak_usage_hour": 9,
+        "average_daily_usage": 4.2,
+        "cost_today": 1.66,
+        "cost_week": 9.10,
+        "cost_month": 40.10,
+        "last_update": "2024-10-04T15:30:00Z",
+        "devices_count": 2,
+        "online_devices": 1,
+        "savings_percentage": 8.3
+      }
+    },
+    "alerts": {
+      "user_001": {
+        "high_usage": true,
+        "last_triggered": "2024-10-04T14:59:00Z",
+        "current_consumption": 2.45,
+        "threshold": 500.0,
+        "threshold_percentage": 80.0,
+        "energy_threshold": 500.0,
+        "threshold_alert_enabled": true,
+        "last_updated": "2024-10-04T15:30:00Z",
+        "alert_history": [
+          {
+            "timestamp": "2024-10-04T14:59:00Z",
+            "type": "threshold_alert",
+            "message": "Energy consumption reached 80% of threshold",
+            "consumption": 2.45,
+            "threshold": 500.0
+          },
+          {
+            "timestamp": "2024-10-03T16:30:00Z",
+            "type": "device_offline",
+            "message": "Kitchen Lights went offline",
+            "deviceId": "device_004",
+            "deviceName": "Kitchen Lights"
+          }
+        ]
+      },
+      "user_002": {
+        "high_usage": false,
+        "last_triggered": "2024-10-01T10:30:00Z",
+        "current_consumption": 5.20,
+        "threshold": 1000.0,
+        "threshold_percentage": 52.0,
+        "energy_threshold": 1000.0,
+        "threshold_alert_enabled": true,
+        "last_updated": "2024-10-04T15:30:00Z",
+        "alert_history": [
+          {
+            "timestamp": "2024-10-01T10:30:00Z",
+            "type": "device_offline",
+            "message": "Office Lights went offline",
+            "deviceId": "device_003",
+            "deviceName": "Office Lights"
+          }
+        ]
+      }
+    },
+    "system_status": {
+      "total_devices": 5,
+      "online_devices": 4,
+      "offline_devices": 1,
+      "total_users": 2,
+      "active_alerts": 1,
+      "system_uptime": "99.9%",
+      "last_maintenance": "2024-10-01T02:00:00Z",
+      "next_maintenance": "2024-11-01T02:00:00Z",
+      "version": "1.2.3",
+      "last_updated": "2024-10-04T15:30:00Z"
+    },
+    "energy_rates": {
+      "current": {
+        "residential": 0.25,
+        "commercial": 0.32,
+        "peak_hours": {
+          "start": "17:00",
+          "end": "21:00",
+          "rate": 0.35
+        },
+        "off_peak_hours": {
+          "start": "21:00",
+          "end": "17:00",
+          "rate": 0.20
+        },
+        "last_updated": "2024-10-04T15:30:00Z"
+      },
+      "historical": {
+        "2024-09": {
+          "residential": 0.24,
+          "commercial": 0.31,
+          "effective_date": "2024-09-01T00:00:00Z"
+        },
+        "2024-08": {
+          "residential": 0.23,
+          "commercial": 0.30,
+          "effective_date": "2024-08-01T00:00:00Z"
+        }
+      }
+    },
+    "weather_data": {
+      "current": {
+        "temperature": 28.5,
+        "humidity": 65.0,
+        "condition": "partly_cloudy",
+        "last_updated": "2024-10-04T15:30:00Z"
+      },
+      "forecast": [
+        {
+          "date": "2024-10-05",
+          "high": 30.0,
+          "low": 22.0,
+          "condition": "sunny",
+          "humidity": 60.0
+        },
+        {
+          "date": "2024-10-06",
+          "high": 29.0,
+          "low": 21.0,
+          "condition": "cloudy",
+          "humidity": 70.0
+        }
+      ]
+    }
+  }
+}
+
