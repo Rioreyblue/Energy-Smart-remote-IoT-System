@@ -129,12 +129,12 @@ class _LoginPageState extends State<LoginPage> {
           child: ClipRRect(
             borderRadius: BorderRadius.circular(20),
             child: Image.asset(
-            'assets/icon/update_icon.png',
-            width: 100,
-            height: 100,
-            fit: BoxFit.contain,
+              'assets/icon/update_icon.png',
+              width: 100,
+              height: 100,
+              fit: BoxFit.contain,
+            ),
           ),
-          )
         ),
 
         SizedBox(height: Insets.lg),
