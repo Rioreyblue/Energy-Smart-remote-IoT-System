@@ -13,9 +13,6 @@ class UsageService {
   Timer? _thisMonthTimer;
   Timer? _dailyMirrorTimer;
   Timer? _todayRealtimeTimer;
-  DateTime? _monthComputedFor;
-  double _monthBaseKwh = 0.0;
-  int _monthBaseUsageTime = 0;
   int _monthTick = 0;
 
   DatabaseReference get _userRef =>
@@ -378,6 +375,79 @@ class UsageService {
     await _performMonthlyUpdate(forceFirestoreWrite: true);
   }
 
+  Future<Map<String, dynamic>> _getMonthlyTotalsFromDaily(DateTime now) async {
+    final uid = _auth.currentUser?.uid;
+    if (uid == null) {
+      return {
+        'totalCost': 0.0,
+        'totalKwh': 0.0,
+        'totalUsageTime': 0,
+        'todayCost': 0.0,
+        'todayKwh': 0.0,
+        'todayUsageTime': 0,
+      };
+    }
+
+    final monthKey = '${now.year}-${now.month.toString().padLeft(2, '0')}';
+    final startKey = '$monthKey-01';
+    final daysInMonth = DateTime(now.year, now.month + 1, 0).day;
+    final endKey = '$monthKey-${daysInMonth.toString().padLeft(2, '0')}';
+    final todayKey =
+        '${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}';
+
+    double totalCost = 0.0;
+    double totalKwh = 0.0;
+    int totalUsage = 0;
+
+    double todayCost = 0.0;
+    double todayKwh = 0.0;
+    int todayUsage = 0;
+
+    try {
+      final dailyCollection = _firestore
+          .collection('users')
+          .doc(uid)
+          .collection('energy_trends')
+          .doc('daily')
+          .collection('data');
+
+      final snapshot =
+          await dailyCollection
+              .where('date', isGreaterThanOrEqualTo: startKey)
+              .where('date', isLessThanOrEqualTo: endKey)
+              .get();
+
+      for (final doc in snapshot.docs) {
+        final data = doc.data();
+        final docCost = (data['totalCost'] ?? 0.0).toDouble();
+        final docKwh = (data['totalKwh'] ?? 0.0).toDouble();
+        final docUsage = (data['totalUsageTime'] ?? 0) as int? ?? 0;
+        final docDate = (data['date'] ?? doc.id) as String;
+
+        totalCost += docCost;
+        totalKwh += docKwh;
+        totalUsage += docUsage;
+
+        if (docDate == todayKey) {
+          todayCost = docCost;
+          todayKwh = docKwh;
+          todayUsage = docUsage;
+        }
+      }
+    } catch (e) {
+      AppLogger.i('[UsageService] Error summing daily totals: $e');
+    }
+
+    return {
+      'totalCost': totalCost,
+      'totalKwh': totalKwh,
+      'totalUsageTime': totalUsage,
+      'todayCost': todayCost,
+      'todayKwh': todayKwh,
+      'todayUsageTime': todayUsage,
+    };
+  }
+
   Future<void> _performMonthlyUpdate({bool forceFirestoreWrite = false}) async {
     final uid = _auth.currentUser?.uid;
     if (uid == null) return;
@@ -385,34 +455,34 @@ class UsageService {
     final now = DateTime.now();
     final monthKey = '${now.year}-${now.month.toString().padLeft(2, '0')}';
 
-    // Refresh monthly base periodically or when month changes
-    final shouldRefreshBase =
-        _monthComputedFor == null ||
-        _monthComputedFor!.year != now.year ||
-        _monthComputedFor!.month != now.month ||
-        _monthTick % 30 == 0 ||
-        forceFirestoreWrite;
+    final dailyTotals = await _getMonthlyTotalsFromDaily(now);
+    double totalCost = dailyTotals['totalCost'] as double;
+    double totalKwh = dailyTotals['totalKwh'] as double;
+    int totalUsageTime = dailyTotals['totalUsageTime'] as int;
 
-    if (shouldRefreshBase) {
-      await _refreshMonthlyBase(now);
-      _monthComputedFor = now;
-    }
+    double todayDocCost = dailyTotals['todayCost'] as double;
+    double todayDocKwh = dailyTotals['todayKwh'] as double;
+    int todayDocUsage = dailyTotals['todayUsageTime'] as int;
 
-    // Read today's live totals from RTDB
     final todaySnap = await _todayUsageRef.get();
-    double todayKwh = 0.0;
-    int todayUsageTime = 0;
     if (todaySnap.exists && todaySnap.value != null) {
       final map = Map<String, dynamic>.from(todaySnap.value as Map);
-      todayKwh = (map['totalKwh'] ?? 0.0).toDouble();
-      todayUsageTime = (map['totalUsageTime'] ?? 0) as int;
+      final liveCost = (map['totalCost'] ?? 0.0).toDouble();
+      final liveKwh = (map['totalKwh'] ?? 0.0).toDouble();
+      final liveUsage = (map['totalUsageTime'] ?? 0) as int? ?? 0;
+
+      if (liveCost > todayDocCost) {
+        totalCost += liveCost - todayDocCost;
+      }
+      if (liveKwh > todayDocKwh) {
+        totalKwh += liveKwh - todayDocKwh;
+      }
+      if (liveUsage > todayDocUsage) {
+        totalUsageTime += liveUsage - todayDocUsage;
+      }
     }
 
-    // Combine base totals (previous days) with today's live totals
-    final totalKwh = _monthBaseKwh + todayKwh;
-    final totalUsageTime = _monthBaseUsageTime + todayUsageTime;
     final rate = await _getCurrentPowerRate();
-    final totalCost = totalKwh * rate;
 
     // Write to RTDB for live UI
     await _thisMonthRef.set({
@@ -439,50 +509,6 @@ class UsageService {
             'totalUsageTime': totalUsageTime,
             'updatedAt': FieldValue.serverTimestamp(),
           }, SetOptions(merge: true));
-    }
-  }
-
-  /// Helper: recompute monthly base (all turn_off events from start of month, excluding today's RTDB live contribution)
-  Future<void> _refreshMonthlyBase(DateTime now) async {
-    try {
-      final startOfMonth = DateTime(now.year, now.month, 1);
-      final endOfMonth = DateTime(
-        now.year,
-        now.month + 1,
-        1,
-      ).subtract(const Duration(milliseconds: 1));
-      final uid = _auth.currentUser?.uid;
-      if (uid == null) return;
-
-      double sumKwh = 0.0;
-      int sumUsage = 0;
-
-      final snapshot =
-          await _firestore
-              .collection('users')
-              .doc(uid)
-              .collection('appliance_usage')
-              .where(
-                'timestamp',
-                isGreaterThanOrEqualTo: Timestamp.fromDate(startOfMonth),
-              )
-              .where(
-                'timestamp',
-                isLessThanOrEqualTo: Timestamp.fromDate(endOfMonth),
-              )
-              .where('action', isEqualTo: 'turn_off')
-              .get();
-
-      for (final doc in snapshot.docs) {
-        final data = doc.data();
-        sumKwh += (data['kwh'] ?? 0.0).toDouble();
-        sumUsage += (data['duration'] ?? 0) as int;
-      }
-
-      _monthBaseKwh = sumKwh;
-      _monthBaseUsageTime = sumUsage;
-    } catch (e) {
-      AppLogger.i('[UsageService] Error refreshing monthly base: $e');
     }
   }
 
