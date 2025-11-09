@@ -108,22 +108,19 @@ class EnergyDashboardController extends ChangeNotifier {
       },
     );
 
-    // Start monthly RTDB updater and listen to monthly usage from RTDB
+    // Start monthly/daily updaters and listen to Firestore-backed monthly totals
     _usageService.startMonthlyRealtimeUpdater();
-    // Start daily Firestore mirror (throttled) for charts/AI datasets
     _usageService.startDailyRealtimeMirror();
-    // Start todayUsage 1s RTDB updater so monthly stream reflects instantly
     _usageService.startTodayRealtimeUpdater();
-    _monthlySubscription = _usageService.listenToThisMonthUsageRTDB().listen(
+    _monthlySubscription = _usageService.listenToThisMonthUsageFirestore().listen(
       (monthlyData) {
         _thisMonth = monthlyData['totalCost'] ?? 0.0;
         notifyListeners();
       },
       onError: (error) {
         AppLogger.w(
-          '[EnergyDashboardController] Error loading monthly RTDB data: $error',
+          '[EnergyDashboardController] Error loading monthly Firestore data: $error',
         );
-        // Don't set error state for monthly data, just log it
       },
     );
 

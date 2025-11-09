@@ -302,65 +302,8 @@ class UsageService {
     _monthTick = 0;
     _thisMonthTimer = Timer.periodic(const Duration(seconds: 1), (_) async {
       try {
-        final uid = _auth.currentUser?.uid;
-        if (uid == null) return;
-
-        final now = DateTime.now();
-        final monthKey = '${now.year}-${now.month.toString().padLeft(2, '0')}';
-
-        // Compute base (sum of month except today's RTDB portion), refresh every 30s or on month change
-        if (_monthComputedFor == null ||
-            _monthComputedFor!.year != now.year ||
-            _monthComputedFor!.month != now.month ||
-            _monthTick % 30 == 0) {
-          await _refreshMonthlyBase(now);
-          _monthComputedFor = now;
-        }
-
-        // Read today's live totals from RTDB
-        // This uses cumulative values from all appliances (calculated correctly by todayUsage updater)
-        final todaySnap = await _todayUsageRef.get();
-        double todayKwh = 0.0;
-        int todayUsageTime = 0;
-        if (todaySnap.exists && todaySnap.value != null) {
-          final map = Map<String, dynamic>.from(todaySnap.value as Map);
-          todayKwh = (map['totalKwh'] ?? 0.0).toDouble();
-          todayUsageTime = (map['totalUsageTime'] ?? 0) as int;
-        }
-
-        // Monthly total = base (previous days from Firestore) + today (from RTDB)
-        // Both use cumulative values, so the total is correct
-        final totalKwh = _monthBaseKwh + todayKwh;
-        final totalUsageTime = _monthBaseUsageTime + todayUsageTime;
-        final rate = await _getCurrentPowerRate();
-        final totalCost = totalKwh * rate;
-
-        // Write to RTDB (instant for UI)
-        await _thisMonthRef.set({
-          'totalKwh': totalKwh,
-          'totalCost': totalCost,
-          'totalUsageTime': totalUsageTime,
-          'month': monthKey,
-          'lastUpdated': now.toIso8601String(),
-        });
-
-        // Throttle Firestore monthly doc updates (~every 20s)
-        if (_monthTick % 20 == 0) {
-          await _firestore
-              .collection('users')
-              .doc(uid)
-              .collection('energy_trends')
-              .doc('monthly')
-              .collection('data')
-              .doc(monthKey)
-              .set({
-                'month': monthKey,
-                'totalKwh': totalKwh,
-                'totalCost': totalCost,
-                'totalUsageTime': totalUsageTime,
-                'updatedAt': FieldValue.serverTimestamp(),
-              }, SetOptions(merge: true));
-        }
+        final forceWrite = _monthTick % 20 == 0;
+        await _performMonthlyUpdate(forceFirestoreWrite: forceWrite);
 
         _monthTick++;
       } catch (e) {
@@ -388,6 +331,115 @@ class UsageService {
         'month': (map['month'] ?? _currentMonthKey()) as String,
       };
     });
+  }
+
+  /// Listen to Firestore monthly collection for persistent month-to-date totals
+  Stream<Map<String, dynamic>> listenToThisMonthUsageFirestore() {
+    final uid = _auth.currentUser?.uid;
+    if (uid == null) {
+      return Stream.value({
+        'totalKwh': 0.0,
+        'totalCost': 0.0,
+        'totalUsageTime': 0,
+        'month': _currentMonthKey(),
+      });
+    }
+
+    final monthKey = _currentMonthKey();
+    final docRef = _firestore
+        .collection('users')
+        .doc(uid)
+        .collection('energy_trends')
+        .doc('monthly')
+        .collection('data')
+        .doc(monthKey);
+
+    return docRef.snapshots().map((snapshot) {
+      if (!snapshot.exists || snapshot.data() == null) {
+        return {
+          'totalKwh': 0.0,
+          'totalCost': 0.0,
+          'totalUsageTime': 0,
+          'month': monthKey,
+        };
+      }
+      final data = snapshot.data()!;
+      return {
+        'totalKwh': (data['totalKwh'] ?? 0.0).toDouble(),
+        'totalCost': (data['totalCost'] ?? 0.0).toDouble(),
+        'totalUsageTime': (data['totalUsageTime'] ?? 0) as int,
+        'month': (data['month'] ?? monthKey) as String,
+      };
+    });
+  }
+
+  /// Force a monthly sync (used after appliance state changes)
+  Future<void> syncMonthlyTotals() async {
+    await _performMonthlyUpdate(forceFirestoreWrite: true);
+  }
+
+  Future<void> _performMonthlyUpdate({bool forceFirestoreWrite = false}) async {
+    final uid = _auth.currentUser?.uid;
+    if (uid == null) return;
+
+    final now = DateTime.now();
+    final monthKey = '${now.year}-${now.month.toString().padLeft(2, '0')}';
+
+    // Refresh monthly base periodically or when month changes
+    final shouldRefreshBase =
+        _monthComputedFor == null ||
+        _monthComputedFor!.year != now.year ||
+        _monthComputedFor!.month != now.month ||
+        _monthTick % 30 == 0 ||
+        forceFirestoreWrite;
+
+    if (shouldRefreshBase) {
+      await _refreshMonthlyBase(now);
+      _monthComputedFor = now;
+    }
+
+    // Read today's live totals from RTDB
+    final todaySnap = await _todayUsageRef.get();
+    double todayKwh = 0.0;
+    int todayUsageTime = 0;
+    if (todaySnap.exists && todaySnap.value != null) {
+      final map = Map<String, dynamic>.from(todaySnap.value as Map);
+      todayKwh = (map['totalKwh'] ?? 0.0).toDouble();
+      todayUsageTime = (map['totalUsageTime'] ?? 0) as int;
+    }
+
+    // Combine base totals (previous days) with today's live totals
+    final totalKwh = _monthBaseKwh + todayKwh;
+    final totalUsageTime = _monthBaseUsageTime + todayUsageTime;
+    final rate = await _getCurrentPowerRate();
+    final totalCost = totalKwh * rate;
+
+    // Write to RTDB for live UI
+    await _thisMonthRef.set({
+      'totalKwh': totalKwh,
+      'totalCost': totalCost,
+      'totalUsageTime': totalUsageTime,
+      'month': monthKey,
+      'lastUpdated': now.toIso8601String(),
+    });
+
+    // Persist to Firestore when requested or on throttle interval
+    if (forceFirestoreWrite) {
+      await _firestore
+          .collection('users')
+          .doc(uid)
+          .collection('energy_trends')
+          .doc('monthly')
+          .collection('data')
+          .doc(monthKey)
+          .set({
+            'month': monthKey,
+            'totalKwh': totalKwh,
+            'totalCost': totalCost,
+            'totalUsageTime': totalUsageTime,
+            'updatedAt': FieldValue.serverTimestamp(),
+          }, SetOptions(merge: true));
+    }
   }
 
   /// Helper: recompute monthly base (all turn_off events from start of month, excluding today's RTDB live contribution)

@@ -430,6 +430,9 @@ class HomeController extends ChangeNotifier {
 
           // Reload data (streams will update automatically, but ensure consistency)
           await Future.wait([_loadTodayUsageData(), _loadRecentActivities()]);
+
+          // Persist monthly totals to Firestore so Home dashboard and datasets stay in sync
+          await _usageService.syncMonthlyTotals();
         } catch (e) {
           AppLogger.e(
             '[HomeController] Error in debounced toggle operations: $e',
