@@ -98,7 +98,7 @@ class CSVExportStrategy implements ExportStrategy {
           reading.previousReading.toStringAsFixed(2),
           reading.presentReading.toStringAsFixed(2),
           reading.consumption.toStringAsFixed(2),
-          reading.ratePerKwh.toStringAsFixed(2),
+          reading.ratePerKwh.toStringAsFixed(4),
           reading.estimatedBill.toStringAsFixed(2),
           dateFormat.format(reading.createdAt),
         ].join(','),
@@ -295,7 +295,7 @@ class PDFExportStrategy implements ExportStrategy {
                           reading.previousReading.toStringAsFixed(2),
                           reading.presentReading.toStringAsFixed(2),
                           reading.consumption.toStringAsFixed(2),
-                          reading.ratePerKwh.toStringAsFixed(2),
+                          reading.ratePerKwh.toStringAsFixed(4),
                           reading.estimatedBill.toStringAsFixed(2),
                         ],
                       )

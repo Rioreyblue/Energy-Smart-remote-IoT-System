@@ -62,7 +62,7 @@ class _MeterReadingSectionState extends State<MeterReadingSection> {
               widget.rateController.text == '0.00' ||
               widget.rateController.text == '0') {
             widget.rateController.text = powerRateService.currentRate
-                .toStringAsFixed(2);
+                .toStringAsFixed(4);
           }
         });
       }
@@ -186,7 +186,7 @@ class _MeterReadingSectionState extends State<MeterReadingSection> {
                         _isLoadingPowerRate = false;
                         widget.rateController.text = powerRateService
                             .currentRate
-                            .toStringAsFixed(2);
+                            .toStringAsFixed(4);
                       });
                     }
                   },

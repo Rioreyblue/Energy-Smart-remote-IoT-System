@@ -127,22 +127,20 @@ class EnergyDashboardController extends ChangeNotifier {
       },
     );
 
-    // Initialize power rate service
+    // Initialize power rate service and listen for updates
     _powerRateService.initialize().then((_) {
       _currentRate = _powerRateService.currentRate;
       notifyListeners();
     });
 
-    // Listen to power rate changes in real-time
-    _powerRateSubscription = _usageService.listenToCurrentPowerRate().listen(
+    _powerRateSubscription ??= _powerRateService.rateStream.listen(
       (rate) {
-        if (rate != _currentRate) {
-          _currentRate = rate;
-          AppLogger.i(
-            '[EnergyDashboardController] Power rate updated to: $_currentRate',
-          );
-          notifyListeners();
-        }
+        if ((_currentRate - rate).abs() < 0.00005) return;
+        _currentRate = rate;
+        AppLogger.i(
+          '[EnergyDashboardController] Power rate updated to: $_currentRate',
+        );
+        notifyListeners();
       },
       onError: (error) {
         AppLogger.w(

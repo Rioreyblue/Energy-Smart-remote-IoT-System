@@ -122,7 +122,7 @@ class ReadingHistorySection extends StatelessWidget {
               ),
               SizedBox(width: Insets.xm),
               Text(
-                '₱${reading.ratePerKwh.toStringAsFixed(2)}/kWh',
+                '₱${reading.ratePerKwh.toStringAsFixed(4)}/kWh',
                 style: ResponsiveText.body(context),
               ),
             ],

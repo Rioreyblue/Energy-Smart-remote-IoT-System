@@ -7,7 +7,7 @@ import '../services/energy_overview_service.dart';
 import '../services/usage_service.dart';
 import '../services/notification_service.dart';
 import '../services/recent_activity_service.dart';
-import '../services/rates_service.dart';
+import '../services/power_rate_service.dart';
 import '../services/appliance_usage_service.dart';
 import '../utils/app_logger.dart';
 
@@ -17,7 +17,7 @@ class HomeController extends ChangeNotifier {
   final UsageService _usageService = UsageService();
   final NotificationService _notificationService = NotificationService();
   final RecentActivityService _activityService = RecentActivityService();
-  final RatesService _ratesService = RatesService();
+  final PowerRateService _powerRateService = PowerRateService();
   final ApplianceUsageService _applianceUsageService = ApplianceUsageService();
   final FirebaseAuth _auth = FirebaseAuth.instance;
 
@@ -34,6 +34,7 @@ class HomeController extends ChangeNotifier {
   StreamSubscription<List<ApplianceModel>>? _appliancesSubscription;
   StreamSubscription<Map<String, dynamic>>? _usageSubscription;
   Timer? _debounceTimer;
+  StreamSubscription<double>? _rateSubscription;
 
   // Getters
   List<ApplianceModel> get appliances => _appliances;
@@ -324,10 +325,22 @@ class HomeController extends ChangeNotifier {
   // Load current rate
   Future<void> _loadCurrentRate() async {
     try {
-      _currentRate = await _ratesService.getCurrentRate();
+      await _powerRateService.initialize();
+      _currentRate = _powerRateService.currentRate;
       notifyListeners();
+
+      _rateSubscription ??= _powerRateService.rateStream.listen(
+        (rate) {
+          if ((_currentRate - rate).abs() < 0.00005) return;
+          _currentRate = rate;
+          notifyListeners();
+        },
+        onError: (error) {
+          AppLogger.w('[HomeController] Error listening to power rate: $error');
+        },
+      );
     } catch (e) {
-      _setError('Failed to load current rate: $e');
+      AppLogger.e('[HomeController] Failed to load current rate: $e');
     }
   }
 
@@ -430,6 +443,15 @@ class HomeController extends ChangeNotifier {
       notifyListeners();
       _setError('Failed to toggle appliance: $e');
     }
+  }
+
+  @override
+  void dispose() {
+    _appliancesSubscription?.cancel();
+    _usageSubscription?.cancel();
+    _debounceTimer?.cancel();
+    _rateSubscription?.cancel();
+    super.dispose();
   }
 
   // Update appliance
@@ -593,7 +615,7 @@ class HomeController extends ChangeNotifier {
 
   // Get current rate stream
   Stream<double> getCurrentRateStream() {
-    return _ratesService.listenToCurrentRate();
+    return _powerRateService.rateStream;
   }
 
   // Get current usage
@@ -633,7 +655,7 @@ class HomeController extends ChangeNotifier {
 
   // Format currency
   String formatCurrency(double value) {
-    return _ratesService.formatCurrency(value);
+    return '₱${value.toStringAsFixed(2)}';
   }
 
   // Format kWh
@@ -668,14 +690,5 @@ class HomeController extends ChangeNotifier {
       _error = null;
       notifyListeners();
     }
-  }
-
-  // Dispose (cleanup all resources)
-  @override
-  void dispose() {
-    _debounceTimer?.cancel();
-    _appliancesSubscription?.cancel();
-    _usageSubscription?.cancel();
-    super.dispose();
   }
 }

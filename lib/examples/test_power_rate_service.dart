@@ -70,7 +70,7 @@ class _TestPowerRateServiceState extends State<TestPowerRateService> {
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             Text(
-                              'Current Rate: ₱${_powerRateService.currentRate.toStringAsFixed(2)}',
+                              'Current Rate: ₱${_powerRateService.currentRate.toStringAsFixed(4)}',
                             ),
                             Text('Is Loading: ${_powerRateService.isLoading}'),
                             if (_powerRateService.error != null)
@@ -136,6 +136,3 @@ class _TestPowerRateServiceState extends State<TestPowerRateService> {
     );
   }
 }
-
-
-

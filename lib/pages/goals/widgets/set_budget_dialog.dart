@@ -22,7 +22,7 @@ class SetBudgetDialog {
     final rateController = TextEditingController(
       text:
           controller.ratePerKwh > 0
-              ? controller.ratePerKwh.toStringAsFixed(2)
+              ? controller.ratePerKwh.toStringAsFixed(4)
               : '',
     );
 
@@ -98,7 +98,7 @@ class _DialogContentState extends State<_DialogContent> {
               widget.rateController.text == '0.00' ||
               widget.rateController.text == '0') {
             widget.rateController.text = powerRateService.currentRate
-                .toStringAsFixed(2);
+                .toStringAsFixed(4);
           }
         });
       }
@@ -207,7 +207,7 @@ class _DialogContentState extends State<_DialogContent> {
                           _isLoadingPowerRate = false;
                           widget.rateController.text = powerRateService
                               .currentRate
-                              .toStringAsFixed(2);
+                              .toStringAsFixed(4);
                         });
                       }
                     },

@@ -74,7 +74,7 @@ class _MonitoringHeaderCardState extends State<MonitoringHeaderCard> {
                     Spacer(),
                     Center(
                       child: Text(
-                        '₱${currentRate.toStringAsFixed(2)} / kWh',
+                        '₱${currentRate.toStringAsFixed(4)} / kWh',
                         style: ResponsiveText.body(context).copyWith(
                           color: Colors.white,
                           fontWeight: FontWeight.w600,

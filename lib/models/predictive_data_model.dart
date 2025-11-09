@@ -185,7 +185,7 @@ class PredictiveDataModel {
   String get formattedEnergy => '${energyKwh.toStringAsFixed(2)} kWh';
 
   /// Get formatted rate
-  String get formattedRate => '₱${rate.toStringAsFixed(2)}/kWh';
+  String get formattedRate => '₱${rate.toStringAsFixed(4)}/kWh';
 
   /// Helper method to get string value from CSV row
   static String? _getStringValue(

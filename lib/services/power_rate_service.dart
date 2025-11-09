@@ -10,19 +10,28 @@ class PowerRateService extends ChangeNotifier {
   PowerRateService._internal();
 
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
+  final StreamController<double> _rateController =
+      StreamController<double>.broadcast();
 
   StreamSubscription<DocumentSnapshot>? _powerRateSubscription;
   double _currentRate = 12.50; // Default fallback rate
   bool _isLoading = false;
+  bool _isInitialized = false;
   String? _error;
 
   // Getters
   double get currentRate => _currentRate;
   bool get isLoading => _isLoading;
   String? get error => _error;
+  Stream<double> get rateStream => _rateController.stream;
 
   /// Initialize and load power rate from Firestore
   Future<void> initialize() async {
+    if (_isInitialized) {
+      await _fetchCurrentRate();
+      return;
+    }
+
     _isLoading = true;
     _error = null;
     notifyListeners();
@@ -32,28 +41,7 @@ class PowerRateService extends ChangeNotifier {
         '[PowerRateService] Loading power rate from admin settings...',
       );
 
-      // Load initial rate
-      final doc =
-          await _firestore
-              .collection('admin_settings')
-              .doc('system_config')
-              .get();
-
-      if (doc.exists) {
-        final data = doc.data();
-        if (data != null && data['powerRate'] != null) {
-          _currentRate = (data['powerRate'] as num).toDouble();
-          AppLogger.i('[PowerRateService] Loaded power rate: $_currentRate');
-        } else {
-          AppLogger.w(
-            '[PowerRateService] powerRate field not found, using default',
-          );
-        }
-      } else {
-        AppLogger.w(
-          '[PowerRateService] Admin settings document not found, using default',
-        );
-      }
+      await _fetchCurrentRate();
 
       // Set up real-time listener for power rate changes
       _powerRateSubscription?.cancel();
@@ -67,13 +55,7 @@ class PowerRateService extends ChangeNotifier {
                 final data = snapshot.data();
                 if (data != null && data['powerRate'] != null) {
                   final newRate = (data['powerRate'] as num).toDouble();
-                  if (newRate != _currentRate) {
-                    _currentRate = newRate;
-                    AppLogger.i(
-                      '[PowerRateService] Power rate updated to: $_currentRate',
-                    );
-                    notifyListeners();
-                  }
+                  _updateRate(newRate);
                 }
               }
             },
@@ -87,6 +69,7 @@ class PowerRateService extends ChangeNotifier {
       AppLogger.i(
         '[PowerRateService] Real-time power rate listener initialized',
       );
+      _isInitialized = true;
     } catch (e) {
       _error = e.toString();
       AppLogger.e('[PowerRateService] Error loading power rate: $e');
@@ -98,7 +81,7 @@ class PowerRateService extends ChangeNotifier {
 
   /// Refresh power rate from Firestore
   Future<void> refresh() async {
-    await initialize();
+    await _fetchCurrentRate();
   }
 
   /// Get current power rate
@@ -114,24 +97,64 @@ class PowerRateService extends ChangeNotifier {
         'updatedAt': FieldValue.serverTimestamp(),
       }, SetOptions(merge: true));
 
-      _currentRate = rate;
-      notifyListeners();
-      AppLogger.i(
-        '[PowerRateService] ✅ [PowerRateService] Power rate updated to: $rate',
-      );
+      _updateRate(rate);
+      AppLogger.i('[PowerRateService] ✅ Power rate updated to: $rate');
       return true;
     } catch (e) {
-      AppLogger.e(
-        '[PowerRateService] ❌ [PowerRateService] Error setting power rate: $e',
-      );
+      AppLogger.e('[PowerRateService] ❌ Error setting power rate: $e');
       return false;
     }
+  }
+
+  Future<void> _fetchCurrentRate() async {
+    try {
+      final doc =
+          await _firestore
+              .collection('admin_settings')
+              .doc('system_config')
+              .get();
+
+      if (doc.exists) {
+        final data = doc.data();
+        if (data != null && data['powerRate'] != null) {
+          final fetchedRate = (data['powerRate'] as num).toDouble();
+          _updateRate(fetchedRate);
+          return;
+        }
+        AppLogger.w(
+          '[PowerRateService] powerRate field not found, using default',
+        );
+      } else {
+        AppLogger.w(
+          '[PowerRateService] Admin settings document not found, using default',
+        );
+      }
+    } catch (e) {
+      _error = e.toString();
+      AppLogger.e('[PowerRateService] Error fetching power rate: $e');
+    }
+  }
+
+  void _updateRate(double rawRate) {
+    final normalizedRate = double.parse(rawRate.toStringAsFixed(4));
+    if ((normalizedRate - _currentRate).abs() < 0.00005) {
+      return;
+    }
+    _currentRate = normalizedRate;
+    AppLogger.i('[PowerRateService] Power rate updated to: $_currentRate');
+    if (!_rateController.isClosed) {
+      _rateController.add(_currentRate);
+    }
+    notifyListeners();
   }
 
   @override
   void dispose() {
     _powerRateSubscription?.cancel();
     _powerRateSubscription = null;
+    if (!_rateController.isClosed) {
+      _rateController.close();
+    }
     super.dispose();
   }
 }

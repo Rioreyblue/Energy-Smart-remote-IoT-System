@@ -37,7 +37,7 @@ class _SetEnergyTargetPageState extends State<SetEnergyTargetPage> {
     _rateController = TextEditingController(
       text:
           widget.controller.ratePerKwh > 0
-              ? widget.controller.ratePerKwh.toStringAsFixed(2)
+              ? widget.controller.ratePerKwh.toStringAsFixed(4)
               : '',
     );
 
@@ -91,7 +91,7 @@ class _SetEnergyTargetPageState extends State<SetEnergyTargetPage> {
     if (mounted) {
       setState(() {
         _isLoadingPowerRate = false;
-        _rateController.text = powerRateService.currentRate.toStringAsFixed(2);
+        _rateController.text = powerRateService.currentRate.toStringAsFixed(4);
       });
     }
   }
