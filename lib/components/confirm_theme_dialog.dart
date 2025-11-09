@@ -37,10 +37,13 @@ class AppDialog extends StatelessWidget {
       child: Container(
         decoration: BoxDecoration(
           border: Border.all(
-            color: (isDarkMode ? AppColor.textPrimary : AppColor.textSecondaryDark),
-            width: 2
+            color:
+                (isDarkMode
+                    ? AppColor.textPrimary
+                    : AppColor.textSecondaryDark),
+            width: 2,
           ),
-          borderRadius: BorderRadius.all(Radius.circular(Insets.md))
+          borderRadius: BorderRadius.all(Radius.circular(Insets.md)),
         ),
         constraints: const BoxConstraints(maxWidth: 400),
         padding: const EdgeInsets.symmetric(
@@ -146,7 +149,6 @@ class ConfirmThemeDialog extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
     return AppDialog(
       icon: Icon(
         isDark ? Icons.nightlight_round : Icons.wb_sunny,

@@ -2,92 +2,157 @@ import 'package:flutter/material.dart';
 import 'package:iconsax/iconsax.dart';
 
 class ApplianceModel {
-  final String uid;
+  final String id;
   final String icon;
   final bool isOn;
-  final double kWh;
+  final double kwh;
   final String name;
-  final String startTime;
-  final int totalUsageTime;
-  final int watts;
+  final String? startTime;
+  final int? totalUsageTime;
+  final int? watts;
+  final String? lastUpdated;
+  final double? voltage;
+  final double? current;
 
   ApplianceModel({
-    required this.uid,
+    required this.id,
     required this.icon,
     required this.isOn,
-    required this.kWh,
+    required this.kwh,
     required this.name,
-    required this.startTime,
-    required this.totalUsageTime,
-    required this.watts,
+    this.startTime,
+    this.totalUsageTime,
+    this.watts,
+    this.lastUpdated,
+    this.voltage,
+    this.current,
   });
 
-  factory ApplianceModel.fromMap(String uid, Map<String, dynamic> data) {
+  factory ApplianceModel.fromMap(String id, Map<String, dynamic> data) {
     return ApplianceModel(
-      uid: uid,
+      id: id,
       icon: data['icon'] ?? 'Iconsax.lamp',
       isOn: data['isOn'] ?? false,
-      kWh: (data['kWh'] ?? 0.0).toDouble(),
+      kwh: (data['kwh'] ?? 0.0).toDouble(),
       name: data['name'] ?? 'Unknown Device',
-      startTime: data['startTime'] ?? '',
-      totalUsageTime: data['totalUsageTime'] ?? 0,
-      watts: data['watts'] ?? 0,
+      startTime: data['startTime'],
+      totalUsageTime: data['totalUsageTime'],
+      watts: data['watts'],
+      lastUpdated: data['lastUpdated'],
+      voltage:
+          data['voltage'] != null ? (data['voltage'] as num).toDouble() : null,
+      current:
+          data['current'] != null ? (data['current'] as num).toDouble() : null,
+    );
+  }
+
+  factory ApplianceModel.fromRealtimeDB(String id, Map<String, dynamic> data) {
+    return ApplianceModel(
+      id: id,
+      icon: data['icon'] ?? 'Iconsax.lamp',
+      isOn: data['isOn'] ?? false,
+      kwh: (data['kwh'] ?? 0.0).toDouble(),
+      name: data['name'] ?? 'Unknown Device',
+      startTime: data['startTime'],
+      totalUsageTime: data['totalUsageTime'],
+      watts: data['watts'],
+      lastUpdated: data['lastUpdated'],
+      voltage:
+          data['voltage'] != null ? (data['voltage'] as num).toDouble() : null,
+      current:
+          data['current'] != null ? (data['current'] as num).toDouble() : null,
     );
   }
 
   Map<String, dynamic> toMap() {
     return {
+      'id': id,
       'icon': icon,
       'isOn': isOn,
-      'kWh': kWh,
+      'kwh': kwh,
       'name': name,
       'startTime': startTime,
       'totalUsageTime': totalUsageTime,
       'watts': watts,
+      'lastUpdated': lastUpdated,
+      'voltage': voltage,
+      'current': current,
     };
   }
 
   ApplianceModel copyWith({
-    String? uid,
+    String? id,
     String? icon,
     bool? isOn,
-    double? kWh,
+    double? kwh,
     String? name,
     String? startTime,
     int? totalUsageTime,
     int? watts,
+    String? lastUpdated,
+    double? voltage,
+    double? current,
   }) {
     return ApplianceModel(
-      uid: uid ?? this.uid,
+      id: id ?? this.id,
       icon: icon ?? this.icon,
       isOn: isOn ?? this.isOn,
-      kWh: kWh ?? this.kWh,
+      kwh: kwh ?? this.kwh,
       name: name ?? this.name,
       startTime: startTime ?? this.startTime,
       totalUsageTime: totalUsageTime ?? this.totalUsageTime,
       watts: watts ?? this.watts,
+      lastUpdated: lastUpdated ?? this.lastUpdated,
+      voltage: voltage ?? this.voltage,
+      current: current ?? this.current,
     );
   }
 
   // Calculate cost based on kWh and rate per kWh
   double calculateCost(double ratePerKwh) {
-    return kWh * ratePerKwh;
+    return kwh * ratePerKwh;
   }
 
   // Format cost as currency
   String formatCost(double ratePerKwh) {
     final cost = calculateCost(ratePerKwh);
-    return '₱${cost.toStringAsFixed(4)}';
+    return '₱${cost.toStringAsFixed(2)}';
   }
 
   // Format kWh display
   String formatKwh() {
-    return '${kWh.toStringAsFixed(2)} kWh';
+    return '${kwh.toStringAsFixed(2)} kWh';
   }
 
   // Format watts display
   String formatWatts() {
-    return '${watts}W';
+    return '${watts ?? 0}W';
+  }
+
+  // Format usage time
+  String formatUsageTime() {
+    if (totalUsageTime == null) return '0h 0m';
+    final hours = totalUsageTime! ~/ 3600;
+    final minutes = (totalUsageTime! % 3600) ~/ 60;
+    return '${hours}h ${minutes}m';
+  }
+
+  // Calculate current session duration if appliance is on
+  Duration? getCurrentSessionDuration() {
+    if (!isOn || startTime == null) return null;
+    final start = DateTime.tryParse(startTime!);
+    if (start == null) return null;
+    return DateTime.now().difference(start);
+  }
+
+  // Get current session cost
+  double getCurrentSessionCost(double ratePerKwh) {
+    if (!isOn || startTime == null || watts == null) return 0.0;
+    final duration = getCurrentSessionDuration();
+    if (duration == null) return 0.0;
+    final hours = duration.inSeconds / 3600.0;
+    final sessionKwh = (watts! * hours) / 1000.0;
+    return sessionKwh * ratePerKwh;
   }
 
   // Get icon data from string
@@ -99,6 +164,9 @@ class ApplianceModel {
         return Iconsax.lamp_1;
       case 'Iconsax.lamp_charge':
         return Iconsax.lamp_charge;
+      case 'Iconsax.socket':
+        // There is no explicit 'socket' icon in some Iconsax versions; use electricity as closest match
+        return Iconsax.electricity;
       case 'Iconsax.coffee':
         return Iconsax.coffee;
       case 'Iconsax.air_conditioner':

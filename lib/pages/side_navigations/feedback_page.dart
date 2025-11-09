@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../../constants/constant.dart';
 import 'package:iconsax/iconsax.dart';
 import '../../widgets/card.dart';
+import 'package:go_router/go_router.dart';
 
 class FeedbackPage extends StatefulWidget {
   const FeedbackPage({super.key});
@@ -27,6 +28,12 @@ class _FeedbackPageState extends State<FeedbackPage> {
         title: const Text('Feedback'),
         backgroundColor: AppColor.accentGreen,
         elevation: 0,
+        foregroundColor: Colors.white,
+        leading: IconButton(
+          icon: const Icon(Iconsax.arrow_left_1),
+          onPressed: () => context.go('/home'),
+          color: Colors.white,
+        ),
       ),
       body: Padding(
         padding: const EdgeInsets.all(Insets.lg),

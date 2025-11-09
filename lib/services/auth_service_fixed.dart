@@ -1,8 +1,11 @@
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:google_sign_in/google_sign_in.dart';
 import '../models/user_model.dart';
 import '../utils/validation_utils.dart';
 import 'database_service.dart';
+import 'testing_verification_service.dart';
+import '../utils/app_logger.dart';
 
 class AuthService {
   final FirebaseAuth _auth = FirebaseAuth.instance;
@@ -141,12 +144,13 @@ class AuthService {
 
       // Send OTP to phone number
       await _auth.verifyPhoneNumber(
-        phoneNumber:
-            '+63${phoneNumber.substring(1)}', // Convert to international format
+        phoneNumber: _formatPhoneNumber(phoneNumber),
         timeout: const Duration(seconds: 60),
         verificationCompleted: (PhoneAuthCredential credential) async {
           // Auto-verification completed
-          print('✅ Auto verification completed for phone: $phoneNumber');
+          AppLogger.i(
+            '[AuthServiceFixed] ✅ Auto verification completed for phone: $phoneNumber',
+          );
           await _completePhoneRegistration(
             credential: credential,
             firstName: firstName,
@@ -159,23 +163,29 @@ class AuthService {
           );
         },
         verificationFailed: (FirebaseAuthException e) {
-          print('❌ Phone verification failed: ${e.code} - ${e.message}');
+          AppLogger.e(
+            '[AuthServiceFixed] ❌ Phone verification failed: ${e.code} - ${e.message}',
+          );
           throw _handleAuthError(e);
         },
         codeSent: (String verificationId, int? resendToken) {
-          print('✅ SMS code sent! Verification ID: $verificationId');
+          AppLogger.i(
+            '[AuthServiceFixed] ✅ SMS code sent! Verification ID: $verificationId',
+          );
           _verificationId = verificationId;
           _resendToken = resendToken;
         },
         codeAutoRetrievalTimeout: (String verificationId) {
-          print('⏱️ Auto retrieval timeout: $verificationId');
+          AppLogger.w(
+            '[AuthServiceFixed] ⏱️ Auto retrieval timeout: $verificationId',
+          );
           _verificationId = verificationId;
         },
       );
 
       return _verificationId;
     } catch (e) {
-      print('❌ Error in registerUserWithPhone: $e');
+      AppLogger.e('[AuthServiceFixed] ❌ Error in registerUserWithPhone: $e');
       throw _handleAuthError(e);
     }
   }
@@ -196,7 +206,9 @@ class AuthService {
         throw Exception('Verification ID not found. Please try again.');
       }
 
-      print('🔐 Attempting phone verification with OTP: $otp');
+      AppLogger.d(
+        '[AuthServiceFixed] 🔐 Attempting phone verification with OTP: $otp',
+      );
 
       // Create credential with OTP
       final PhoneAuthCredential credential = PhoneAuthProvider.credential(
@@ -215,9 +227,29 @@ class AuthService {
         address: address,
       );
     } catch (e) {
-      print('❌ Error in completePhoneRegistration: $e');
+      AppLogger.e(
+        '[AuthServiceFixed] ❌ Error in completePhoneRegistration: $e',
+      );
       throw _handleAuthError(e);
     }
+  }
+
+  // Safely format phone number to E.164 (PH +63 default)
+  String _formatPhoneNumber(String input) {
+    String cleaned = input.replaceAll(RegExp(r'[^\d+]'), '');
+    if (cleaned.isEmpty) {
+      throw Exception('Invalid phone number.');
+    }
+    if (cleaned.startsWith('+')) {
+      return cleaned;
+    }
+    if (cleaned.startsWith('0')) {
+      return '+63${cleaned.length > 1 ? cleaned.substring(1) : ''}';
+    }
+    if (cleaned.startsWith('63')) {
+      return '+$cleaned';
+    }
+    return '+63$cleaned';
   }
 
   // Private method to complete phone registration
@@ -267,7 +299,9 @@ class AuthService {
       }
       return null;
     } catch (e) {
-      print('❌ Error in _completePhoneRegistration: $e');
+      AppLogger.e(
+        '[AuthServiceFixed] ❌ Error in _completePhoneRegistration: $e',
+      );
       throw _handleAuthError(e);
     }
   }
@@ -283,14 +317,18 @@ class AuthService {
       }
 
       if (user.emailVerified) {
-        print('✅ Email already verified for: ${user.email}');
+        AppLogger.i(
+          '[AuthServiceFixed] ✅ Email already verified for: ${user.email}',
+        );
         return;
       }
 
       await user.sendEmailVerification();
-      print('✅ Email verification sent to: ${user.email}');
+      AppLogger.i(
+        '[AuthServiceFixed] ✅ Email verification sent to: ${user.email}',
+      );
     } catch (e) {
-      print('❌ Error sending email verification: $e');
+      AppLogger.e('[AuthServiceFixed] ❌ Error sending email verification: $e');
       throw _handleAuthError(e);
     }
   }
@@ -303,20 +341,26 @@ class AuthService {
         throw Exception('No user found. Please log in again.');
       }
 
-      print('🔍 Checking email verification status for: ${user.email}');
+      AppLogger.d(
+        '[AuthServiceFixed] 🔍 Checking email verification status for: ${user.email}',
+      );
       await user.reload();
 
       if (user.emailVerified) {
-        print('✅ Email verified successfully for: ${user.email}');
+        AppLogger.i(
+          '[AuthServiceFixed] ✅ Email verified successfully for: ${user.email}',
+        );
         // Update user data to mark email as verified
         await _updateUserVerificationStatus(user.uid, isEmailVerified: true);
         return true;
       }
 
-      print('❌ Email not yet verified for: ${user.email}');
+      AppLogger.e(
+        '[AuthServiceFixed] ❌ Email not yet verified for: ${user.email}',
+      );
       return false;
     } catch (e) {
-      print('❌ Error in verifyEmail: $e');
+      AppLogger.e('[AuthServiceFixed] ❌ Error in verifyEmail: $e');
       throw _handleAuthError(e);
     }
   }
@@ -324,11 +368,45 @@ class AuthService {
   /// Verify phone with OTP (for existing users)
   Future<bool> verifyPhoneWithOTP(String otp) async {
     try {
+      // Check if testing mode is enabled
+      final isTestingMode =
+          await TestingVerificationService.isTestingModeEnabled();
+
+      if (isTestingMode) {
+        AppLogger.i(
+          '[AuthServiceFixed] 🧪 Testing mode enabled - validating testing code: $otp',
+        );
+        final testingResult = TestingVerificationService.validateTestingCode(
+          otp,
+        );
+
+        if (testingResult.isValid) {
+          AppLogger.i(
+            '[AuthServiceFixed] ✅ Testing code accepted: ${testingResult.scenario}',
+          );
+          // Simulate successful verification for testing
+          final user = _auth.currentUser;
+          if (user != null) {
+            await _updateUserVerificationStatus(
+              user.uid,
+              isPhoneVerified: true,
+            );
+          }
+          return true;
+        } else {
+          AppLogger.e(
+            '[AuthServiceFixed] ❌ Testing code rejected: ${testingResult.message}',
+          );
+          throw Exception(testingResult.message);
+        }
+      }
+
+      // Real verification logic
       if (_verificationId == null) {
         throw Exception('Verification ID not found. Please try again.');
       }
 
-      print('🔐 Verifying phone with OTP: $otp');
+      AppLogger.d('[AuthServiceFixed] 🔐 Verifying phone with OTP: $otp');
 
       // Create credential with OTP
       final PhoneAuthCredential credential = PhoneAuthProvider.credential(
@@ -342,7 +420,9 @@ class AuthService {
       );
 
       if (result.user != null) {
-        print('✅ Phone verification successful for user: ${result.user!.uid}');
+        AppLogger.i(
+          '[AuthServiceFixed] ✅ Phone verification successful for user: ${result.user!.uid}',
+        );
         // Update user data to mark phone as verified
         await _updateUserVerificationStatus(
           result.user!.uid,
@@ -353,7 +433,7 @@ class AuthService {
 
       return false;
     } catch (e) {
-      print('❌ Error in verifyPhoneWithOTP: $e');
+      AppLogger.e('[AuthServiceFixed] ❌ Error in verifyPhoneWithOTP: $e');
       throw _handleAuthError(e);
     }
   }
@@ -364,14 +444,35 @@ class AuthService {
     required String verificationType,
   }) async {
     try {
-      print('🔄 Resending $verificationType verification...');
+      AppLogger.d(
+        '[AuthServiceFixed] 🔄 Resending $verificationType verification...',
+      );
+
+      // Check if testing mode is enabled
+      final isTestingMode =
+          await TestingVerificationService.isTestingModeEnabled();
+
+      if (isTestingMode && verificationType == 'phone') {
+        AppLogger.i(
+          '[AuthServiceFixed] 🧪 Testing mode enabled - simulating SMS resend',
+        );
+        // Simulate successful resend in testing mode
+        _verificationId = 'testing_verification_id';
+        _resendToken = 12345;
+        AppLogger.i(
+          '[AuthServiceFixed] ✅ Testing SMS code "resent" successfully',
+        );
+        return;
+      }
 
       if (verificationType == 'phone') {
         await _auth.verifyPhoneNumber(
           phoneNumber: '+63${phoneNumber.substring(1)}',
           timeout: const Duration(seconds: 60),
           verificationCompleted: (PhoneAuthCredential credential) async {
-            print('✅ Auto verification completed during resend');
+            AppLogger.i(
+              '[AuthServiceFixed] ✅ Auto verification completed during resend',
+            );
           },
           verificationFailed: (FirebaseAuthException e) {
             print(
@@ -380,12 +481,16 @@ class AuthService {
             throw _handleAuthError(e);
           },
           codeSent: (String verificationId, int? resendToken) {
-            print('✅ SMS code resent! Verification ID: $verificationId');
+            AppLogger.i(
+              '[AuthServiceFixed] ✅ SMS code resent! Verification ID: $verificationId',
+            );
             _verificationId = verificationId;
             _resendToken = resendToken;
           },
           codeAutoRetrievalTimeout: (String verificationId) {
-            print('⏱️ Auto retrieval timeout during resend: $verificationId');
+            AppLogger.w(
+              '[AuthServiceFixed] ⏱️ Auto retrieval timeout during resend: $verificationId',
+            );
             _verificationId = verificationId;
           },
           forceResendingToken: _resendToken,
@@ -393,15 +498,19 @@ class AuthService {
       } else if (verificationType == 'email') {
         final user = _auth.currentUser;
         if (user != null) {
-          print('📧 Resending email verification to: ${user.email}');
+          AppLogger.i(
+            '[AuthServiceFixed] 📧 Resending email verification to: ${user.email}',
+          );
           await user.sendEmailVerification();
-          print('✅ Email verification resent successfully');
+          AppLogger.i(
+            '[AuthServiceFixed] ✅ Email verification resent successfully',
+          );
         } else {
           throw Exception('No user found. Please log in again.');
         }
       }
     } catch (e) {
-      print('❌ Error resending verification: $e');
+      AppLogger.e('[AuthServiceFixed] ❌ Error resending verification: $e');
       throw _handleAuthError(e);
     }
   }
@@ -415,7 +524,7 @@ class AuthService {
       await user.reload();
       return user.emailVerified;
     } catch (e) {
-      print('❌ Error checking email verification: $e');
+      AppLogger.e('[AuthServiceFixed] ❌ Error checking email verification: $e');
       return false;
     }
   }
@@ -429,7 +538,7 @@ class AuthService {
       final userData = await _getUserData(user.uid);
       return userData?.isPhoneVerified ?? false;
     } catch (e) {
-      print('❌ Error checking phone verification: $e');
+      AppLogger.e('[AuthServiceFixed] ❌ Error checking phone verification: $e');
       return false;
     }
   }
@@ -441,7 +550,7 @@ class AuthService {
       final phoneVerified = await isPhoneVerified();
       return emailVerified && phoneVerified;
     } catch (e) {
-      print('❌ Error checking full verification: $e');
+      AppLogger.e('[AuthServiceFixed] ❌ Error checking full verification: $e');
       return false;
     }
   }
@@ -676,6 +785,12 @@ class AuthService {
   Future<void> signOut() async {
     try {
       await _auth.signOut();
+      try {
+        final googleSignIn = GoogleSignIn();
+        if (await googleSignIn.isSignedIn()) {
+          await googleSignIn.signOut();
+        }
+      } catch (_) {}
       await _saveLoginState(false);
     } catch (e) {
       throw _handleAuthError(e);
@@ -710,7 +825,9 @@ class AuthService {
       }
       // Update RTDB only for live verification state
       await _db.updateRealtimeUser(uid, updateData);
-      print('✅ Updated verification status for user: $uid');
+      AppLogger.i(
+        '[AuthServiceFixed] ✅ Updated verification status for user: $uid',
+      );
     } catch (e) {
       throw Exception('Failed to update verification status: ${e.toString()}');
     }
@@ -719,7 +836,9 @@ class AuthService {
   // Handle authentication errors
   String _handleAuthError(dynamic error) {
     if (error is FirebaseAuthException) {
-      print('🔥 Firebase Auth Error: ${error.code} - ${error.message}');
+      AppLogger.e(
+        '[AuthServiceFixed] 🔥 Firebase Auth Error: ${error.code} - ${error.message}',
+      );
       switch (error.code) {
         case 'user-not-found':
           return 'No user found with this email address.';
@@ -751,7 +870,7 @@ class AuthService {
           return 'Authentication failed: ${error.message}';
       }
     }
-    print('🔥 General Error: $error');
+    AppLogger.e('[AuthServiceFixed] 🔥 General Error: $error');
     return 'An unexpected error occurred. Please try again.';
   }
 
@@ -760,6 +879,33 @@ class AuthService {
     try {
       await _auth.sendPasswordResetEmail(email: email);
     } catch (e) {
+      throw _handleAuthError(e);
+    }
+  }
+
+  // Change user password
+  Future<bool> changePassword({
+    required String currentPassword,
+    required String newPassword,
+  }) async {
+    try {
+      final user = _auth.currentUser;
+      if (user == null) throw Exception('No user logged in');
+
+      // Reauthenticate with current password
+      final credential = EmailAuthProvider.credential(
+        email: user.email!,
+        password: currentPassword,
+      );
+      await user.reauthenticateWithCredential(credential);
+
+      // Update password
+      await user.updatePassword(newPassword);
+
+      AppLogger.i('[AuthService] ✅ Password changed successfully');
+      return true;
+    } catch (e) {
+      AppLogger.e('[AuthService] ❌ Error changing password: $e');
       throw _handleAuthError(e);
     }
   }
@@ -792,21 +938,42 @@ class AuthService {
     }
   }
 
-  // Update verification attempts
+  // Update verification attempts with automatic reset after 2 minutes
   Future<void> updateVerificationAttempts(String uid) async {
     try {
       final userData = await _getUserData(uid);
       if (userData == null) return;
 
-      final newAttempts = userData.verificationAttempts + 1;
       final now = DateTime.now();
+      int newAttempts = 1;
+
+      // Check if last verification attempt was more than 2 minutes ago
+      if (userData.lastVerificationAttempt != null) {
+        final timeSinceLastAttempt = now.difference(
+          userData.lastVerificationAttempt!,
+        );
+
+        // Reset attempts if 2 minutes (120 seconds) have passed
+        if (timeSinceLastAttempt.inSeconds >= 120) {
+          newAttempts = 1;
+          AppLogger.i(
+            '[AuthService] Verification attempts reset after 2 minutes',
+          );
+        } else {
+          // Increment attempts if within 2 minutes
+          newAttempts = userData.verificationAttempts + 1;
+        }
+      }
 
       // Update RTDB only
       await _db.updateRealtimeUser(uid, {
         'verificationAttempts': newAttempts,
         'lastVerificationAttempt': now.toIso8601String(),
       });
+
+      AppLogger.d('[AuthService] Verification attempts updated: $newAttempts');
     } catch (e) {
+      AppLogger.e('[AuthService] Failed to update verification attempts: $e');
       throw Exception(
         'Failed to update verification attempts: ${e.toString()}',
       );
@@ -827,4 +994,3 @@ class AuthService {
     }
   }
 }
-

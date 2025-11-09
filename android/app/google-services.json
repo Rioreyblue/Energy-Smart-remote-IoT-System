@@ -8,9 +8,9 @@
   "client": [
     {
       "client_info": {
-        "mobilesdk_app_id": "1:281073543283:android:4afab462085088b265e206",
+        "mobilesdk_app_id": "1:281073543283:android:6079d533590cff8f65e206",
         "android_client_info": {
-          "package_name": "com.example.exercise_app"
+          "package_name": "com.example.energy_smart_admin"
         }
       },
       "oauth_client": [
@@ -30,6 +30,57 @@
             {
               "client_id": "281073543283-f9prvi1q4251jl8qpjjv7v38lnnqf3t6.apps.googleusercontent.com",
               "client_type": 3
+            },
+            {
+              "client_id": "281073543283-ekc52o4nhu39mf089a4anr8raue7ulji.apps.googleusercontent.com",
+              "client_type": 2,
+              "ios_info": {
+                "bundle_id": "com.example.exerciseApp"
+              }
+            }
+          ]
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:281073543283:android:4afab462085088b265e206",
+        "android_client_info": {
+          "package_name": "com.example.exercise_app"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "281073543283-ornnrv80rq9u2as3ad552pon8dfprpsr.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.example.exercise_app",
+            "certificate_hash": "405f260935ed6df5b33a79821473d08cd434d1d2"
+          }
+        },
+        {
+          "client_id": "281073543283-f9prvi1q4251jl8qpjjv7v38lnnqf3t6.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyA6W02Sm2ShrmNtmDTe9sOV1dQD3hGSf4M"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "281073543283-f9prvi1q4251jl8qpjjv7v38lnnqf3t6.apps.googleusercontent.com",
+              "client_type": 3
+            },
+            {
+              "client_id": "281073543283-ekc52o4nhu39mf089a4anr8raue7ulji.apps.googleusercontent.com",
+              "client_type": 2,
+              "ios_info": {
+                "bundle_id": "com.example.exerciseApp"
+              }
             }
           ]
         }

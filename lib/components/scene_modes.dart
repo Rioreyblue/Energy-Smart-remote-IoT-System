@@ -1,14 +1,14 @@
-export 'scene_modes.dart' show DeviceState, ScenePreset, SceneCard;
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:exercise_app/constants/constant.dart';
-import 'package:iconsax/iconsax.dart';
 
 /// Device state model for managing individual device states (used for both scenes and quick controls)
+/// Note: This should be compatible with the DeviceState in scene_model.dart
 class DeviceState {
   final bool isOn;
-  final double? value; // For dimmable lights, fan speed, etc.
+  final double value; // For dimmable lights, fan speed, etc. (0.0 to 1.0)
 
-  const DeviceState({required this.isOn, this.value});
+  const DeviceState({required this.isOn, this.value = 1.0});
 
   DeviceState copyWith({bool? isOn, double? value}) {
     return DeviceState(isOn: isOn ?? this.isOn, value: value ?? this.value);
@@ -184,12 +184,18 @@ class _SceneCardState extends State<SceneCard>
             : AppColor.primary.withAlpha(25);
 
     return GestureDetector(
-      onTapDown: (_) => setState(() => _isPressed = true),
+      onTapDown: (_) {
+        HapticFeedback.lightImpact();
+        setState(() => _isPressed = true);
+      },
       onTapUp: (_) {
         setState(() => _isPressed = false);
+        HapticFeedback.mediumImpact();
         widget.onTap();
       },
-      onTapCancel: () => setState(() => _isPressed = false),
+      onTapCancel: () {
+        setState(() => _isPressed = false);
+      },
       child: AnimatedBuilder(
         animation: _pulseAnimation,
         builder: (context, child) {
@@ -226,15 +232,49 @@ class _SceneCardState extends State<SceneCard>
                   Stack(
                     alignment: Alignment.center,
                     children: [
-                      Icon(widget.preset.icon, color: iconColor, size: 24),
+                      // Icon with opacity animation when loading
+                      AnimatedOpacity(
+                        opacity: widget.isLoading ? 0.5 : 1.0,
+                        duration: const Duration(milliseconds: 200),
+                        child: Icon(
+                          widget.preset.icon,
+                          color: iconColor,
+                          size: 24,
+                        ),
+                      ),
+                      // Loading indicator
                       if (widget.isLoading)
                         SizedBox(
                           width: 28,
                           height: 28,
                           child: CircularProgressIndicator(
-                            strokeWidth: 2,
+                            strokeWidth: 2.5,
                             valueColor: AlwaysStoppedAnimation<Color>(
-                              iconColor.withAlpha(178),
+                              isActiveState
+                                  ? AppColor.accentGreen
+                                  : iconColor.withAlpha(178),
+                            ),
+                          ),
+                        ),
+                      // Success checkmark when active (after loading completes)
+                      if (isActiveState && !widget.isLoading)
+                        Positioned(
+                          right: -4,
+                          top: -4,
+                          child: Container(
+                            padding: const EdgeInsets.all(2),
+                            decoration: BoxDecoration(
+                              color: AppColor.accentGreen,
+                              shape: BoxShape.circle,
+                              border: Border.all(
+                                color: backgroundColor,
+                                width: 2,
+                              ),
+                            ),
+                            child: const Icon(
+                              Icons.check,
+                              size: 12,
+                              color: Colors.white,
                             ),
                           ),
                         ),

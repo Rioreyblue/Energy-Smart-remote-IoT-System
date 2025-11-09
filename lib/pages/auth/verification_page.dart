@@ -1,12 +1,14 @@
-import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:iconsax/iconsax.dart';
 import 'package:pin_code_fields/pin_code_fields.dart';
 import 'package:go_router/go_router.dart';
 import 'package:exercise_app/constants/constant.dart';
 import 'package:exercise_app/services/auth_service.dart';
+import 'package:exercise_app/services/phone_auth_service.dart';
 import 'package:exercise_app/widgets/app_snackbar.dart';
 import 'package:exercise_app/utils/validation_utils.dart';
+import 'package:exercise_app/utils/app_logger.dart';
+import 'package:provider/provider.dart';
 
 class VerificationPage extends StatefulWidget {
   final String verificationType; // 'email' or 'phone'
@@ -37,40 +39,23 @@ class VerificationPage extends StatefulWidget {
 }
 
 class _VerificationPageState extends State<VerificationPage> {
-  final _otpController = TextEditingController();
   final _authService = AuthService();
   final _formKey = GlobalKey<FormState>();
 
   bool _isLoading = false;
-  bool _isResending = false;
-  int _remainingTime = 0;
   int _verificationAttempts = 0;
-  Timer? _timer;
+  String? _statusMessage;
+  String _otpValue = '';
 
   @override
   void initState() {
     super.initState();
-    _startCooldownTimer();
     _loadUserData();
   }
 
   @override
   void dispose() {
-    _timer?.cancel();
-    _otpController.dispose();
     super.dispose();
-  }
-
-  void _startCooldownTimer() {
-    _timer = Timer.periodic(const Duration(seconds: 1), (timer) {
-      if (_remainingTime > 0) {
-        setState(() {
-          _remainingTime--;
-        });
-      } else {
-        timer.cancel();
-      }
-    });
   }
 
   Future<void> _loadUserData() async {
@@ -81,20 +66,41 @@ class _VerificationPageState extends State<VerificationPage> {
         setState(() {
           _verificationAttempts = userData.verificationAttempts;
         });
+        AppLogger.d(
+          '[VerificationPage] Loaded verification attempts: $_verificationAttempts',
+        );
       }
     }
   }
 
   Future<void> _verifyOTP() async {
+    // Check if widget is still mounted before proceeding
+    if (!mounted) return;
+
     if (!_formKey.currentState!.validate()) return;
 
-    final otp = _otpController.text.trim();
+    final otp = _otpValue.trim();
+    final phoneAuthService = context.read<PhoneAuthService>();
 
-    // Check if verification attempts exceeded
-    if (_verificationAttempts >= 3) {
+    if (widget.verificationType == 'phone' && !phoneAuthService.isCodeSent) {
       AppSnackbar.showError(
         context,
-        'Too many verification attempts. Please try again later.',
+        'Send the verification code first before entering the OTP.',
+      );
+      return;
+    }
+
+    // Check if verification attempts exceeded (limit set to 7)
+    final attemptsExceeded = ValidationUtils.isVerificationAttemptsExceeded(
+      _verificationAttempts,
+    );
+    if (attemptsExceeded) {
+      AppSnackbar.showError(
+        context,
+        'Too many verification attempts. Please wait 2 minutes before trying again.',
+      );
+      AppLogger.w(
+        '[VerificationPage] Verification attempts exceeded: $_verificationAttempts',
       );
       return;
     }
@@ -102,33 +108,45 @@ class _VerificationPageState extends State<VerificationPage> {
     setState(() => _isLoading = true);
 
     try {
-      // Only handle phone verification here
       final isVerified = await _authService.verifyPhoneWithOTP(otp);
+      phoneAuthService.clearError();
 
       if (isVerified) {
         // Update verification attempts
         final user = _authService.currentUser;
         if (user != null) {
           await _authService.updateVerificationAttempts(user.uid);
+          AppLogger.i('[VerificationPage] Verification successful');
         }
 
         if (mounted) {
+          phoneAuthService.reset();
+          setState(() {
+            _statusMessage = null;
+          });
           AppSnackbar.showSuccess(
             context,
             'Phone verification successful! Welcome to Energy Smart.',
           );
 
-          // Navigate to home page using GoRouter
-          context.go('/home');
+          // Refresh auth state by reloading user data
+          await _authService.getCurrentUserData();
+
+          // Small delay to ensure auth state propagates
+          await Future.delayed(const Duration(milliseconds: 300));
+
+          // Navigate to home once verification completes
+          if (mounted) {
+            context.go('/home');
+          }
         }
       } else {
         // Update verification attempts
         final user = _authService.currentUser;
         if (user != null) {
           await _authService.updateVerificationAttempts(user.uid);
-          setState(() {
-            _verificationAttempts++;
-          });
+          // Reload user data to get the updated attempts count
+          await _loadUserData();
         }
 
         if (mounted) {
@@ -150,35 +168,28 @@ class _VerificationPageState extends State<VerificationPage> {
   }
 
   Future<void> _resendCode() async {
-    if (_remainingTime > 0) return;
+    final phoneAuth = context.read<PhoneAuthService>();
+    if (!mounted || !phoneAuth.canResend) return;
 
-    setState(() => _isResending = true);
+    setState(() {
+      _statusMessage = null;
+    });
 
-    try {
-      await _authService.resendVerificationCode(
-        phoneNumber: widget.mobileNumber,
-        verificationType: widget.verificationType,
-      );
+    final success = await phoneAuth.resendCode();
 
-      if (mounted) {
-        AppSnackbar.showSuccess(
-          context,
-          'Verification code sent successfully!',
-        );
+    if (!mounted) return;
 
-        setState(() {
-          _remainingTime = 30;
-        });
-        _startCooldownTimer();
-      }
-    } catch (e) {
-      if (mounted) {
-        AppSnackbar.showError(context, e.toString());
-      }
-    } finally {
-      if (mounted) {
-        setState(() => _isResending = false);
-      }
+    setState(() {
+      _statusMessage =
+          success
+              ? 'OTP resent. Use the latest code delivered to your phone.'
+              : phoneAuth.error;
+    });
+
+    if (success) {
+      AppSnackbar.showSuccess(context, 'Verification code re-sent.');
+    } else if (phoneAuth.error != null) {
+      AppSnackbar.showError(context, phoneAuth.error!);
     }
   }
 
@@ -186,6 +197,7 @@ class _VerificationPageState extends State<VerificationPage> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
+    final phoneAuth = context.watch<PhoneAuthService>();
 
     return Scaffold(
       backgroundColor: theme.colorScheme.surface,
@@ -194,7 +206,7 @@ class _VerificationPageState extends State<VerificationPage> {
         elevation: 0,
         leading: IconButton(
           icon: Icon(Iconsax.arrow_left_1, color: AppColor.accentGreen),
-          onPressed: () => Navigator.pop(context),
+          onPressed: () => context.go('login'),
         ),
         title: Text(
           'Verify ${widget.verificationType == 'email' ? 'Email' : 'Phone'}',
@@ -216,12 +228,7 @@ class _VerificationPageState extends State<VerificationPage> {
               SizedBox(height: Insets.xl),
 
               // Verification Form
-              _buildVerificationForm(context, isDark),
-
-              SizedBox(height: Insets.xl),
-
-              // Resend Button
-              _buildResendButton(context),
+              _buildVerificationForm(context, isDark, phoneAuth),
             ],
           ),
         ),
@@ -283,7 +290,11 @@ class _VerificationPageState extends State<VerificationPage> {
     );
   }
 
-  Widget _buildVerificationForm(BuildContext context, bool isDark) {
+  Widget _buildVerificationForm(
+    BuildContext context,
+    bool isDark,
+    PhoneAuthService phoneAuth,
+  ) {
     return Container(
       padding: EdgeInsets.all(Insets.lg),
       decoration: BoxDecoration(
@@ -302,39 +313,163 @@ class _VerificationPageState extends State<VerificationPage> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            // OTP Input (only for phone verification)
             if (widget.verificationType == 'phone') ...[
-              _buildOTPInput(context),
-              SizedBox(height: Insets.lg),
-              // Verify Button (only for phone verification)
-              _buildVerifyButton(context),
+              _buildPhoneVerificationSection(context, phoneAuth),
+            ] else ...[
+              _buildCheckEmailButton(context),
+              SizedBox(height: Insets.md),
+              _buildResendEmailButton(context),
             ],
 
-            // Check Email Button (for email verification)
-            if (widget.verificationType == 'email')
-              _buildCheckEmailButton(context),
-
-            SizedBox(height: Insets.md),
-
-            // Attempts Counter
-            if (_verificationAttempts > 0)
+            if (_verificationAttempts > 0) ...[
+              SizedBox(height: Insets.md),
               Text(
-                'Attempts: $_verificationAttempts/3',
+                'Attempts: $_verificationAttempts/5',
                 style: ResponsiveText.caption(context).copyWith(
                   color:
-                      _verificationAttempts >= 3
+                      _verificationAttempts >= 5
                           ? Colors.red
                           : AppColor.textSecondary,
                 ),
                 textAlign: TextAlign.center,
               ),
+            ],
           ],
         ),
       ),
     );
   }
 
-  Widget _buildOTPInput(BuildContext context) {
+  Widget _buildPhoneVerificationSection(
+    BuildContext context,
+    PhoneAuthService phoneAuth,
+  ) {
+    final canResend = phoneAuth.canResend;
+    final hasSentCode = phoneAuth.isCodeSent;
+    final resendLabel =
+        hasSentCode && !canResend
+            ? 'Resend in ${phoneAuth.formattedTime}'
+            : 'Resend code';
+    final phoneDisplay = _fallbackPhoneDisplay();
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Container(
+          padding: EdgeInsets.all(Insets.md),
+          decoration: BoxDecoration(
+            color: AppColor.accentGreen.withAlpha(20),
+            borderRadius: BorderRadius.circular(16),
+          ),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Icon(Iconsax.info_circle, color: AppColor.accentGreen),
+              SizedBox(width: Insets.sm),
+              Expanded(
+                child: Text(
+                  'SmsChef sends the OTP using your registered device. '
+                  'Make sure it stays online so the code can arrive.',
+                  style: ResponsiveText.body(context).copyWith(
+                    color: AppColor.primary,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+        SizedBox(height: Insets.lg),
+        Text(
+          'Code sent to',
+          style: ResponsiveText.label(
+            context,
+          ).copyWith(fontWeight: FontWeight.w600),
+        ),
+        SizedBox(height: Insets.sm),
+        Container(
+          padding: EdgeInsets.symmetric(
+            horizontal: Insets.md,
+            vertical: Insets.sm,
+          ),
+          decoration: BoxDecoration(
+            border: Border.all(color: AppColor.primary.withAlpha(90)),
+            borderRadius: BorderRadius.circular(16),
+          ),
+          child: Row(
+            children: [
+              Icon(Iconsax.mobile, color: AppColor.primary),
+              SizedBox(width: Insets.sm),
+              Expanded(
+                child: Text(
+                  phoneAuth.phoneNumber?.isNotEmpty == true
+                      ? phoneAuth.phoneNumber!
+                      : (phoneDisplay ?? 'No number on file'),
+                  style: ResponsiveText.body(context).copyWith(
+                    color: AppColor.primary,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+        SizedBox(height: Insets.md),
+        _buildOTPInput(context, phoneAuth),
+        SizedBox(height: Insets.lg),
+        _buildVerifyButton(context, phoneAuth),
+        SizedBox(height: Insets.md),
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            TextButton(
+              onPressed: () => context.go('/sms'),
+              child: Text(
+                'Use a different number',
+                style: ResponsiveText.body(context).copyWith(
+                  color: AppColor.primary,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ),
+            TextButton(
+              onPressed: hasSentCode && canResend ? _resendCode : null,
+              child: Text(
+                resendLabel,
+                style: ResponsiveText.body(context).copyWith(
+                  color:
+                      hasSentCode && canResend
+                          ? AppColor.accentGreen
+                          : AppColor.textSecondary,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ),
+          ],
+        ),
+        if (_statusMessage != null) ...[
+          SizedBox(height: Insets.lg),
+          _buildBanner(
+            context,
+            _statusMessage!,
+            AppColor.accentGreen,
+            AppColor.accentGreen.withAlpha(26),
+          ),
+        ],
+        if (phoneAuth.error != null) ...[
+          SizedBox(height: Insets.md),
+          _buildBanner(
+            context,
+            phoneAuth.error!,
+            AppColor.accentRed,
+            AppColor.accentRed.withAlpha(26),
+          ),
+        ],
+      ],
+    );
+  }
+
+  Widget _buildOTPInput(BuildContext context, PhoneAuthService phoneAuth) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -348,7 +483,7 @@ class _VerificationPageState extends State<VerificationPage> {
         PinCodeTextField(
           appContext: context,
           length: 6,
-          controller: _otpController,
+          enabled: !_isLoading,
           keyboardType: TextInputType.number,
           animationType: AnimationType.fade,
           pinTheme: PinTheme(
@@ -365,18 +500,32 @@ class _VerificationPageState extends State<VerificationPage> {
           ),
           enableActiveFill: true,
           onCompleted: (value) {
-            _verifyOTP();
+            setState(() => _otpValue = value);
+            // Check if mounted before calling _verifyOTP
+            if (mounted && phoneAuth.isCodeSent) {
+              _verifyOTP();
+            }
           },
-          onChanged: (value) {},
+          onChanged: (value) => _otpValue = value,
           validator: (value) {
             return ValidationUtils.validateOTP(value ?? '');
           },
         ),
+        if (!phoneAuth.isCodeSent)
+          Padding(
+            padding: const EdgeInsets.only(top: 8),
+            child: Text(
+              'Send a code from the previous step, then enter the 6-digit OTP here.',
+              style: ResponsiveText.caption(
+                context,
+              ).copyWith(color: AppColor.textSecondary),
+            ),
+          ),
       ],
     );
   }
 
-  Widget _buildVerifyButton(BuildContext context) {
+  Widget _buildVerifyButton(BuildContext context, PhoneAuthService phoneAuth) {
     return Container(
       height: 56,
       decoration: BoxDecoration(
@@ -393,7 +542,8 @@ class _VerificationPageState extends State<VerificationPage> {
         ],
       ),
       child: ElevatedButton(
-        onPressed: _isLoading ? null : _verifyOTP,
+        onPressed:
+            _isLoading || !phoneAuth.isCodeSent ? null : () => _verifyOTP(),
         style: ElevatedButton.styleFrom(
           backgroundColor: Colors.transparent,
           shadowColor: Colors.transparent,
@@ -477,6 +627,51 @@ class _VerificationPageState extends State<VerificationPage> {
     );
   }
 
+  Widget _buildResendEmailButton(BuildContext context) {
+    return Align(
+      alignment: Alignment.centerRight,
+      child: TextButton(
+        onPressed: _isLoading ? null : _resendEmailVerification,
+        child: Text(
+          'Resend verification email',
+          style: ResponsiveText.body(
+            context,
+          ).copyWith(color: AppColor.accentGreen, fontWeight: FontWeight.w600),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildBanner(
+    BuildContext context,
+    String message,
+    Color foreground,
+    Color background,
+  ) {
+    return Container(
+      padding: EdgeInsets.all(Insets.md),
+      decoration: BoxDecoration(
+        color: background,
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(Iconsax.info_circle, color: foreground, size: 20),
+          SizedBox(width: Insets.sm),
+          Expanded(
+            child: Text(
+              message,
+              style: ResponsiveText.caption(
+                context,
+              ).copyWith(color: foreground, fontWeight: FontWeight.w600),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   Future<void> _checkEmailVerification() async {
     setState(() => _isLoading = true);
 
@@ -489,7 +684,17 @@ class _VerificationPageState extends State<VerificationPage> {
             context,
             'Email verified successfully! Welcome to Energy Smart.',
           );
-          context.go('/home');
+
+          // Refresh auth state by reloading user data
+          await _authService.getCurrentUserData();
+
+          // Small delay to ensure auth state propagates
+          await Future.delayed(const Duration(milliseconds: 300));
+
+          // Navigate to root - AuthWrapper will redirect to /home if fully verified
+          if (mounted) {
+            context.go('/');
+          }
         }
       } else {
         if (mounted) {
@@ -510,42 +715,39 @@ class _VerificationPageState extends State<VerificationPage> {
     }
   }
 
-  Widget _buildResendButton(BuildContext context) {
-    return Column(
-      children: [
-        Text(
-          'Didn\'t receive the code?',
-          style: ResponsiveText.body(
-            context,
-          ).copyWith(color: AppColor.textSecondary),
-        ),
-        SizedBox(height: Insets.sm),
-        TextButton(
-          onPressed: _remainingTime > 0 || _isResending ? null : _resendCode,
-          child:
-              _isResending
-                  ? SizedBox(
-                    width: 20,
-                    height: 20,
-                    child: CircularProgressIndicator(
-                      color: AppColor.accentGreen,
-                      strokeWidth: 2,
-                    ),
-                  )
-                  : Text(
-                    _remainingTime > 0
-                        ? 'Resend in ${_remainingTime}s'
-                        : 'Resend Code',
-                    style: ResponsiveText.body(context).copyWith(
-                      color:
-                          _remainingTime > 0
-                              ? AppColor.textSecondary
-                              : AppColor.accentGreen,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-        ),
-      ],
-    );
+  String? _fallbackPhoneDisplay() {
+    final trimmedMobile = widget.mobileNumber.trim();
+    if (trimmedMobile.isNotEmpty) {
+      return trimmedMobile;
+    }
+
+    final contact = widget.contactInfo.trim();
+    if (contact.isNotEmpty && RegExp(r'^\+?[\d ]+$').hasMatch(contact)) {
+      return contact;
+    }
+
+    return null;
+  }
+
+  Future<void> _resendEmailVerification() async {
+    setState(() => _isLoading = true);
+
+    try {
+      await _authService.resendVerificationCode(verificationType: 'email');
+      if (mounted) {
+        AppSnackbar.showSuccess(
+          context,
+          'Verification email sent. Please check your inbox.',
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        AppSnackbar.showError(context, e.toString());
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _isLoading = false);
+      }
+    }
   }
 }

@@ -1,5 +1,8 @@
 {
   "projects": {
-    "default": "capstonefinal593"
-  }
+    "default": "capstonefinal593",
+    "no": "capstonefinal593"
+  },
+  "targets": {},
+  "etags": {}
 }

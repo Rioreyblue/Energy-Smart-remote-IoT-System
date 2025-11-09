@@ -1,10 +1,27 @@
 import 'package:flutter/material.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 
 class SettingsService {
   // Static instance for singleton pattern
   static final SettingsService _instance = SettingsService._internal();
   factory SettingsService() => _instance;
   SettingsService._internal();
+
+  final FirebaseFirestore _firestore = FirebaseFirestore.instance;
+  final FirebaseAuth _auth = FirebaseAuth.instance;
+
+  String get _userId => _auth.currentUser?.uid ?? '';
+  DocumentReference get _settingsRef => _firestore
+      .collection('users')
+      .doc(_userId)
+      .collection('settings')
+      .doc('main');
+  DocumentReference get _profileRef => _firestore
+      .collection('users')
+      .doc(_userId)
+      .collection('profile')
+      .doc('main');
 
   // Settings data (placeholder for database integration)
   Map<String, dynamic> _settings = {
@@ -28,13 +45,7 @@ class SettingsService {
   // Save individual setting
   Future<bool> saveSetting(String key, dynamic value) async {
     try {
-      // TODO: Replace with actual Firestore operation
-      // await FirebaseFirestore.instance
-      //     .collection('user_settings')
-      //     .doc('settings')
-      //     .update({key: value});
-
-      // For now, update local state
+      await _settingsRef.update({key: value});
       _settings[key] = value;
       return true;
     } catch (e) {
@@ -69,17 +80,15 @@ class SettingsService {
   // Load all settings
   Future<Map<String, dynamic>> loadSettings() async {
     try {
-      // TODO: Replace with actual Firestore operation
-      // final doc = await FirebaseFirestore.instance
-      //     .collection('user_settings')
-      //     .doc('settings')
-      //     .get();
-      //
-      // if (doc.exists) {
-      //   _settings = Map<String, dynamic>.from(doc.data()!);
-      // }
-
-      // For now, return local state
+      final doc = await _settingsRef.get();
+      if (doc.exists) {
+        _settings = Map<String, dynamic>.from(
+          doc.data() as Map<String, dynamic>,
+        );
+      } else {
+        // Create default settings if none exist
+        await _settingsRef.set(_settings);
+      }
       return _settings;
     } catch (e) {
       debugPrint('Error loading settings: $e');
@@ -269,5 +278,42 @@ class SettingsService {
   Future<bool> setBackgroundUpdates(bool enabled) async {
     return await saveSetting('backgroundUpdates', enabled);
   }
-}
 
+  // Profile management methods
+  Future<Map<String, dynamic>?> getUserProfile() async {
+    try {
+      final doc = await _profileRef.get();
+      if (doc.exists) {
+        return Map<String, dynamic>.from(doc.data() as Map<String, dynamic>);
+      }
+      return null;
+    } catch (e) {
+      debugPrint('Error getting user profile: $e');
+      return null;
+    }
+  }
+
+  Future<bool> updateUserProfile(Map<String, dynamic> profileData) async {
+    try {
+      await _profileRef.set(profileData, SetOptions(merge: true));
+      return true;
+    } catch (e) {
+      debugPrint('Error updating user profile: $e');
+      return false;
+    }
+  }
+
+  Future<bool> createUserProfile(Map<String, dynamic> profileData) async {
+    try {
+      await _profileRef.set({
+        ...profileData,
+        'createdAt': FieldValue.serverTimestamp(),
+        'updatedAt': FieldValue.serverTimestamp(),
+      });
+      return true;
+    } catch (e) {
+      debugPrint('Error creating user profile: $e');
+      return false;
+    }
+  }
+}

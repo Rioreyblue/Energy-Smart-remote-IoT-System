@@ -2,6 +2,12 @@ import 'package:flutter/material.dart';
 import 'package:iconsax/iconsax.dart';
 import 'package:exercise_app/constants/constant.dart';
 import 'package:exercise_app/services/settings_service.dart';
+import 'package:exercise_app/services/local_storage_service.dart';
+import 'package:exercise_app/services/goals_service.dart';
+import 'package:exercise_app/services/export_service.dart';
+import 'package:exercise_app/utils/permission_helper.dart';
+import 'package:exercise_app/models/goals_model.dart';
+import 'package:go_router/go_router.dart';
 
 class DataManagementPage extends StatefulWidget {
   const DataManagementPage({super.key});
@@ -12,8 +18,35 @@ class DataManagementPage extends StatefulWidget {
 
 class _DataManagementPageState extends State<DataManagementPage> {
   final SettingsService _settingsService = SettingsService();
+  final LocalStorageService _localStorageService = LocalStorageService();
+  final GoalsService _goalsService = GoalsService();
+  final ExportService _exportService = ExportService();
+
   bool _isLoading = false;
   bool _isClearing = false;
+  bool _isClearingLocalStorage = false;
+  bool _isExportingAll = false;
+  Map<String, int> _storageSizes = {};
+
+  @override
+  void initState() {
+    super.initState();
+    _loadStorageInfo();
+  }
+
+  Future<void> _loadStorageInfo() async {
+    setState(() => _isLoading = true);
+    try {
+      final sizes = await _localStorageService.getStorageSize();
+      setState(() {
+        _storageSizes = sizes;
+      });
+    } catch (e) {
+      // Handle error silently
+    } finally {
+      setState(() => _isLoading = false);
+    }
+  }
 
   Future<void> _clearAppCache() async {
     setState(() => _isClearing = true);
@@ -131,6 +164,11 @@ class _DataManagementPageState extends State<DataManagementPage> {
         backgroundColor: AppColor.accentGreen,
         elevation: 0,
         foregroundColor: Colors.white,
+        leading: IconButton(
+          icon: const Icon(Iconsax.arrow_left_1),
+          onPressed: () => context.go('/home'),
+          color: Colors.white,
+        ),
       ),
       body:
           _isLoading
@@ -171,16 +209,20 @@ class _DataManagementPageState extends State<DataManagementPage> {
                     ),
                     SizedBox(height: Insets.lg),
 
-                    // Clear Cache Section
-                    _buildClearCacheSection(context),
-                    SizedBox(height: Insets.lg),
-
                     // Storage Info Section
                     _buildStorageInfoSection(context),
                     SizedBox(height: Insets.lg),
 
                     // Data Export Section
                     _buildDataExportSection(context),
+                    SizedBox(height: Insets.lg),
+
+                    // Local Storage Section
+                    _buildLocalStorageSection(context),
+                    SizedBox(height: Insets.lg),
+
+                    // Clear Cache Section
+                    _buildClearCacheSection(context),
                   ],
                 ),
               ),
@@ -229,7 +271,7 @@ class _DataManagementPageState extends State<DataManagementPage> {
               gradient: LinearGradient(
                 colors: [
                   AppColor.accentRed,
-                  AppColor.accentRed.withOpacity(0.8),
+                  AppColor.accentRed.withValues(alpha: 0.8),
                 ],
                 begin: Alignment.topLeft,
                 end: Alignment.bottomRight,
@@ -329,16 +371,18 @@ class _DataManagementPageState extends State<DataManagementPage> {
                 child: _buildStorageItem(
                   context,
                   'App Data',
-                  '2.5 MB',
+                  LocalStorageService.formatBytes(_storageSizes['Total'] ?? 0),
                   Iconsax.document,
                 ),
               ),
               Expanded(
                 child: _buildStorageItem(
                   context,
-                  'Cache',
-                  '1.2 MB',
-                  Iconsax.folder_2,
+                  'Meter Readings',
+                  LocalStorageService.formatBytes(
+                    _storageSizes['meter_readings.json'] ?? 0,
+                  ),
+                  Iconsax.document_text,
                 ),
               ),
             ],
@@ -350,16 +394,20 @@ class _DataManagementPageState extends State<DataManagementPage> {
               Expanded(
                 child: _buildStorageItem(
                   context,
-                  'Readings',
-                  '0.8 MB',
-                  Iconsax.document_text,
+                  'Appliances',
+                  LocalStorageService.formatBytes(
+                    _storageSizes['appliances.json'] ?? 0,
+                  ),
+                  Iconsax.folder_2,
                 ),
               ),
               Expanded(
                 child: _buildStorageItem(
                   context,
                   'Settings',
-                  '0.1 MB',
+                  LocalStorageService.formatBytes(
+                    _storageSizes['SharedPreferences'] ?? 0,
+                  ),
                   Iconsax.setting_2,
                 ),
               ),
@@ -439,14 +487,14 @@ class _DataManagementPageState extends State<DataManagementPage> {
           ),
           SizedBox(height: Insets.lg),
 
+          // Export Usage Data Button
           ElevatedButton.icon(
             onPressed: () {
-              // Navigate to export page
-              Navigator.pushNamed(context, '/exportUsageData');
+              context.go('/exportUsageData');
             },
             icon: Icon(Iconsax.export_1, color: Colors.white),
             label: Text(
-              'Export Data',
+              'Export Usage Data',
               style: ResponsiveText.body(
                 context,
               ).copyWith(color: Colors.white, fontWeight: FontWeight.w600),
@@ -460,6 +508,309 @@ class _DataManagementPageState extends State<DataManagementPage> {
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(12),
               ),
+            ),
+          ),
+          SizedBox(height: Insets.md),
+
+          // Export All Data Button
+          OutlinedButton.icon(
+            onPressed: _isExportingAll ? null : _exportAllData,
+            icon: Icon(Iconsax.document_download, color: AppColor.accentGreen),
+            label:
+                _isExportingAll
+                    ? SizedBox(
+                      width: 16,
+                      height: 16,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        color: AppColor.accentGreen,
+                      ),
+                    )
+                    : Text(
+                      'Export All Data',
+                      style: ResponsiveText.body(context).copyWith(
+                        color: AppColor.accentGreen,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+            style: OutlinedButton.styleFrom(
+              side: BorderSide(color: AppColor.accentGreen, width: 2),
+              padding: EdgeInsets.symmetric(
+                vertical: Insets.md,
+                horizontal: Insets.lg,
+              ),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _exportAllData() async {
+    // Request permissions
+    final hasPermission = await PermissionHelper.isStoragePermissionGranted();
+    if (!hasPermission) {
+      final granted = await PermissionHelper.showPermissionRationale(context);
+      if (!granted) {
+        return;
+      }
+    }
+
+    setState(() => _isExportingAll = true);
+
+    try {
+      // Get all data
+      final readingsResult = await _goalsService.getMeterReadingsHistory();
+      final readings =
+          readingsResult.isSuccess && readingsResult.data != null
+              ? readingsResult.data!
+              : <MeterReadingModel>[];
+
+      if (readings.isEmpty) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('No data available to export'),
+            backgroundColor: AppColor.accentRed,
+          ),
+        );
+        return;
+      }
+
+      // Export as CSV (default)
+      final fileName =
+          'energy_smart_all_data_${DateTime.now().millisecondsSinceEpoch}';
+      final result = await _exportService.exportData(
+        data: readings,
+        format: ExportFormat.csv,
+        fileName: fileName,
+      );
+
+      if (result.success && result.filePath != null) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              'All data exported successfully to Downloads folder!',
+            ),
+            backgroundColor: AppColor.accentGreen,
+            duration: const Duration(seconds: 3),
+          ),
+        );
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(result.message),
+            backgroundColor: AppColor.accentRed,
+          ),
+        );
+      }
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Export failed: $e'),
+          backgroundColor: AppColor.accentRed,
+        ),
+      );
+    } finally {
+      setState(() => _isExportingAll = false);
+    }
+  }
+
+  Future<void> _clearLocalStorage() async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder:
+          (context) => AlertDialog(
+            backgroundColor: Theme.of(context).colorScheme.surface,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(16),
+            ),
+            title: Row(
+              children: [
+                Icon(Iconsax.warning_2, color: AppColor.accentRed, size: 24),
+                SizedBox(width: Insets.sm),
+                Text(
+                  'Clear Local Storage',
+                  style: ResponsiveText.stat(context),
+                ),
+              ],
+            ),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'This will permanently delete all locally stored data including:',
+                  style: ResponsiveText.body(context),
+                ),
+                SizedBox(height: Insets.md),
+                _buildWarningItem(context, 'Meter readings'),
+                _buildWarningItem(context, 'Appliance data'),
+                _buildWarningItem(context, 'User profile cache'),
+                SizedBox(height: Insets.md),
+                Text(
+                  'This action cannot be undone. Make sure to export your data first!',
+                  style: ResponsiveText.body(context).copyWith(
+                    fontWeight: FontWeight.w600,
+                    color: AppColor.accentRed,
+                  ),
+                ),
+              ],
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context, false),
+                child: Text('Cancel', style: ResponsiveText.body(context)),
+              ),
+              ElevatedButton(
+                onPressed: () => Navigator.pop(context, true),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: AppColor.accentRed,
+                  foregroundColor: Colors.white,
+                ),
+                child: Text(
+                  'Clear Storage',
+                  style: ResponsiveText.body(context),
+                ),
+              ),
+            ],
+          ),
+    );
+
+    if (confirmed == true) {
+      setState(() => _isClearingLocalStorage = true);
+      try {
+        final success = await _localStorageService.clearLocalStorage();
+        if (success && mounted) {
+          await _loadStorageInfo(); // Refresh storage info
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Local storage cleared successfully!'),
+              backgroundColor: AppColor.accentGreen,
+            ),
+          );
+        }
+      } catch (e) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Error clearing storage: $e'),
+              backgroundColor: AppColor.accentRed,
+            ),
+          );
+        }
+      } finally {
+        if (mounted) {
+          setState(() => _isClearingLocalStorage = false);
+        }
+      }
+    }
+  }
+
+  Widget _buildLocalStorageSection(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      padding: EdgeInsets.all(Insets.lg),
+      decoration: BoxDecoration(
+        color: Theme.of(context).colorScheme.surface,
+        borderRadius: BorderRadius.circular(16),
+        border: Border(
+          left: BorderSide(color: AppColor.mediumConsumption, width: 4),
+          right: BorderSide(color: AppColor.mediumConsumption, width: 4),
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withAlpha((0.05 * 255).toInt()),
+            blurRadius: 8,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(
+                Iconsax.document_download,
+                color: AppColor.mediumConsumption,
+                size: 24,
+              ),
+              SizedBox(width: Insets.sm),
+              Text('Local Storage', style: ResponsiveText.stat(context)),
+            ],
+          ),
+          SizedBox(height: Insets.md),
+          Text(
+            'Manage locally stored data on your device. Clear local storage to free up space.',
+            style: ResponsiveText.body(context),
+          ),
+          SizedBox(height: Insets.lg),
+
+          Container(
+            width: double.infinity,
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                colors: [
+                  AppColor.mediumConsumption,
+                  AppColor.mediumConsumption.withValues(alpha: 0.8),
+                ],
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+              ),
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: ElevatedButton(
+              onPressed: _isClearingLocalStorage ? null : _clearLocalStorage,
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.transparent,
+                shadowColor: Colors.transparent,
+                padding: EdgeInsets.symmetric(vertical: Insets.lg),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+              ),
+              child:
+                  _isClearingLocalStorage
+                      ? Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          SizedBox(
+                            width: 20,
+                            height: 20,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              valueColor: AlwaysStoppedAnimation<Color>(
+                                Colors.white,
+                              ),
+                            ),
+                          ),
+                          SizedBox(width: Insets.sm),
+                          Text(
+                            'Clearing Storage...',
+                            style: ResponsiveText.body(context).copyWith(
+                              color: Colors.white,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ],
+                      )
+                      : Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(Iconsax.trash, color: Colors.white, size: 20),
+                          SizedBox(width: Insets.sm),
+                          Text(
+                            'Clear Local Storage',
+                            style: ResponsiveText.body(context).copyWith(
+                              color: Colors.white,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ],
+                      ),
             ),
           ),
         ],

@@ -8,7 +8,6 @@ class DeviceStateModel {
   final String cost;
   bool isOn;
   DateTime? _onStart;
-  Duration _elapsed = Duration.zero;
   String timerText = '0:00:00:00';
   Timer? _timer;
 
@@ -33,7 +32,6 @@ class DeviceStateModel {
       _startTimer();
     } else {
       _timer?.cancel();
-      _elapsed = Duration.zero;
       timerText = '0:00:00:00';
     }
   }

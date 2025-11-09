@@ -88,9 +88,8 @@ class QuickControls extends StatelessWidget {
     ApplianceModel appliance,
     HomeController controller,
   ) {
-    final cost = appliance.formatCost(
-      12.0,
-    ); // Default rate, should be configurable
+    // Use dynamic rate from Firestore (admin_settings/system_config/powerRate)
+    final cost = appliance.formatCost(controller.currentRate);
     final timerText = _formatTimerText(appliance);
 
     return SwitchCard(
@@ -100,20 +99,23 @@ class QuickControls extends StatelessWidget {
       label: 'Cost',
       cost: cost,
       timerText: timerText,
-      onToggle: (value) => controller.toggleAppliance(appliance.uid, value),
+      onToggle: (value) => controller.toggleAppliance(appliance.id, value),
     );
   }
 
+  // Optimized timer text formatting - cache calculation
   String _formatTimerText(ApplianceModel appliance) {
-    if (!appliance.isOn || appliance.startTime.isEmpty) {
+    if (!appliance.isOn ||
+        appliance.startTime == null ||
+        appliance.startTime!.isEmpty) {
       return '0:00:00:00';
     }
 
     try {
-      final startTime = DateTime.parse(appliance.startTime);
-      final now = DateTime.now();
-      final duration = now.difference(startTime);
+      final startTime = DateTime.parse(appliance.startTime!);
+      final duration = DateTime.now().difference(startTime);
 
+      // Return formatted duration efficiently
       final days = duration.inDays;
       final hours = duration.inHours % 24;
       final minutes = duration.inMinutes % 60;

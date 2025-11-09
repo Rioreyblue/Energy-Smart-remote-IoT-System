@@ -121,9 +121,9 @@ class ValidationUtils {
     return null; // Valid OTP
   }
 
-  // Check if verification attempts are exceeded
+  // Check if verification attempts are exceeded (limit set to 7)
   static bool isVerificationAttemptsExceeded(int attempts) {
-    return attempts >= 3;
+    return attempts >= 7;
   }
 
   // Check if enough time has passed for resend (30 seconds)
@@ -145,4 +145,3 @@ class ValidationUtils {
     return remaining > 0 ? remaining : 0;
   }
 }
-

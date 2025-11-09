@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:exercise_app/constants/constant.dart';
-import 'package:iconsax/iconsax.dart';
 import 'scene_modes.dart';
 
 class SceneModesCard extends StatelessWidget {

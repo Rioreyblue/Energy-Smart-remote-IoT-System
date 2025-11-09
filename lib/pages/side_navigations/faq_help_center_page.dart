@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../../constants/constant.dart';
 import 'package:iconsax/iconsax.dart';
+import 'package:go_router/go_router.dart';
 
 class FAQHelpCenterPage extends StatelessWidget {
   const FAQHelpCenterPage({super.key});
@@ -26,6 +27,12 @@ class FAQHelpCenterPage extends StatelessWidget {
         title: const Text('FAQ / Help Center'),
         backgroundColor: AppColor.accentGreen,
         elevation: 0,
+        foregroundColor: Colors.white,
+        leading: IconButton(
+          icon: const Icon(Iconsax.arrow_left_1),
+          onPressed: () => context.go('/home'),
+          color: Colors.white,
+        ),
       ),
       body: Padding(
         padding: const EdgeInsets.all(Insets.lg),

@@ -1,5 +1,4 @@
 import 'package:firebase_auth/firebase_auth.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'firebase_options.dart';
 
@@ -18,7 +17,6 @@ Future<void> testAuthFlow() async {
     print('✅ Firebase Auth instance created');
 
     // Test Firestore
-    final firestore = FirebaseFirestore.instance;
     print('✅ Firestore instance created');
 
     // Check current user
@@ -54,6 +52,3 @@ Future<void> testAuthFlow() async {
 void main() async {
   await testAuthFlow();
 }
-
-
-

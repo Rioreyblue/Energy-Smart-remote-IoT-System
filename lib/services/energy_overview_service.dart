@@ -2,6 +2,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_database/firebase_database.dart';
 import 'package:rxdart/rxdart.dart';
+import '../utils/app_logger.dart';
 
 class EnergyOverviewService {
   static final EnergyOverviewService _instance =
@@ -65,7 +66,7 @@ class EnergyOverviewService {
       }
       return 0.0;
     } catch (e) {
-      print('Error getting current usage: $e');
+      AppLogger.i('[EnergyOverviewService] Error getting current usage: $e');
       return 0.0;
     }
   }
@@ -183,7 +184,7 @@ class EnergyOverviewService {
       }
       return 0.0;
     } catch (e) {
-      print('Error getting target cost: $e');
+      AppLogger.i('[EnergyOverviewService] Error getting target cost: $e');
       return 0.0;
     }
   }
@@ -300,7 +301,7 @@ class EnergyOverviewService {
       // If no document exists for current month, reset is needed
       return !doc.exists;
     } catch (e) {
-      print('Error checking monthly reset: $e');
+      AppLogger.i('[EnergyOverviewService] Error checking monthly reset: $e');
       return false;
     }
   }
@@ -328,7 +329,7 @@ class EnergyOverviewService {
             'deviceLogs': {},
           });
     } catch (e) {
-      print('Error initializing monthly data: $e');
+      AppLogger.i('[EnergyOverviewService] Error initializing monthly data: $e');
     }
   }
 
@@ -359,7 +360,7 @@ class EnergyOverviewService {
         'thisMonth': thisMonth,
       };
     } catch (e) {
-      print('Error getting energy overview data: $e');
+      AppLogger.i('[EnergyOverviewService] Error getting energy overview data: $e');
       return {
         'currentUsage': 0.0,
         'conversionValue': 0.0,

@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
-import 'package:firebase_auth/firebase_auth.dart';
 import 'services/auth_service.dart';
-import 'models/user_model.dart';
+import 'services/testing_verification_service.dart';
 
 /// Debug test class to verify the authentication and verification system
 class VerificationTestPage extends StatefulWidget {
@@ -40,50 +39,61 @@ class _VerificationTestPageState extends State<VerificationTestPage> {
                 style: const TextStyle(fontSize: 16),
               ),
             ),
-            
+
             const SizedBox(height: 20),
-            
+
             // Test Buttons
             ElevatedButton(
               onPressed: _isLoading ? null : _testCurrentUser,
               child: const Text('Check Current User'),
             ),
-            
+
             const SizedBox(height: 10),
-            
+
             ElevatedButton(
               onPressed: _isLoading ? null : _testEmailVerification,
               child: const Text('Test Email Verification'),
             ),
-            
+
             const SizedBox(height: 10),
-            
+
             ElevatedButton(
               onPressed: _isLoading ? null : _testPhoneVerification,
               child: const Text('Test Phone Verification'),
             ),
-            
+
             const SizedBox(height: 10),
-            
+
             ElevatedButton(
               onPressed: _isLoading ? null : _testFullVerification,
               child: const Text('Test Full Verification Status'),
             ),
-            
+
             const SizedBox(height: 10),
-            
+
             ElevatedButton(
               onPressed: _isLoading ? null : _testSendEmailVerification,
               child: const Text('Send Email Verification'),
             ),
-            
+
+            const SizedBox(height: 10),
+
+            ElevatedButton(
+              onPressed: _isLoading ? null : _testTestingMode,
+              child: const Text('Test Testing Mode'),
+            ),
+
+            const SizedBox(height: 10),
+
+            ElevatedButton(
+              onPressed: _isLoading ? null : _showTestingInstructions,
+              child: const Text('Show Testing Instructions'),
+            ),
+
             const SizedBox(height: 20),
-            
+
             // Loading Indicator
-            if (_isLoading)
-              const Center(
-                child: CircularProgressIndicator(),
-              ),
+            if (_isLoading) const Center(child: CircularProgressIndicator()),
           ],
         ),
       ),
@@ -101,7 +111,8 @@ class _VerificationTestPageState extends State<VerificationTestPage> {
       if (user != null) {
         final userData = await _authService.getCurrentUserData();
         setState(() {
-          _status = 'User: ${user.email}\n'
+          _status =
+              'User: ${user.email}\n'
               'Email Verified: ${user.emailVerified}\n'
               'Phone Verified: ${userData?.isPhoneVerified ?? false}\n'
               'UID: ${user.uid}';
@@ -209,15 +220,81 @@ class _VerificationTestPageState extends State<VerificationTestPage> {
       });
     }
   }
+
+  Future<void> _testTestingMode() async {
+    setState(() {
+      _isLoading = true;
+      _status = 'Testing testing mode...';
+    });
+
+    try {
+      // Test enabling testing mode
+      await TestingVerificationService.setTestingMode(true);
+      final isEnabled = await TestingVerificationService.isTestingModeEnabled();
+
+      // Test validation of different codes
+      final successResult = TestingVerificationService.validateTestingCode(
+        '123456',
+      );
+      final invalidResult = TestingVerificationService.validateTestingCode(
+        '000000',
+      );
+
+      // Disable testing mode
+      await TestingVerificationService.setTestingMode(false);
+
+      setState(() {
+        _status =
+            'Testing mode test completed!\n'
+            'Enabled: $isEnabled\n'
+            'Success code (123456): ${successResult.isValid}\n'
+            'Invalid code (000000): ${invalidResult.isValid}';
+      });
+    } catch (e) {
+      setState(() {
+        _status = 'Testing mode test failed: $e';
+      });
+    } finally {
+      setState(() {
+        _isLoading = false;
+      });
+    }
+  }
+
+  Future<void> _showTestingInstructions() async {
+    setState(() {
+      _isLoading = true;
+      _status = 'Loading testing instructions...';
+    });
+
+    try {
+      final instructions = TestingVerificationService.getTestingInstructions();
+      final scenarios = TestingVerificationService.getTestingScenarios();
+
+      setState(() {
+        _status =
+            'Testing Instructions:\n\n$instructions\n\n'
+            'Available scenarios: ${scenarios.join(', ')}';
+      });
+    } catch (e) {
+      setState(() {
+        _status = 'Failed to load instructions: $e';
+      });
+    } finally {
+      setState(() {
+        _isLoading = false;
+      });
+    }
+  }
 }
 
 /// Test registration with email
 Future<void> testEmailRegistration() async {
   final authService = AuthService();
-  
+
   try {
     print('🧪 Testing email registration...');
-    
+
     final user = await authService.registerUserWithEmail(
       email: 'test@example.com',
       password: 'TestPassword123!',
@@ -228,7 +305,7 @@ Future<void> testEmailRegistration() async {
       energyProvider: 'Meralco',
       address: '123 Test Street, Test City',
     );
-    
+
     if (user != null) {
       print('✅ Email registration successful: ${user.email}');
       print('📧 Email verification should be sent automatically');
@@ -243,10 +320,10 @@ Future<void> testEmailRegistration() async {
 /// Test registration with phone
 Future<void> testPhoneRegistration() async {
   final authService = AuthService();
-  
+
   try {
     print('🧪 Testing phone registration...');
-    
+
     final verificationId = await authService.registerUserWithPhone(
       phoneNumber: '09123456789',
       firstName: 'Test',
@@ -256,7 +333,7 @@ Future<void> testPhoneRegistration() async {
       energyProvider: 'Meralco',
       address: '123 Test Street, Test City',
     );
-    
+
     if (verificationId != null) {
       print('✅ Phone registration initiated: $verificationId');
       print('📱 SMS should be sent to the phone number');
@@ -271,24 +348,23 @@ Future<void> testPhoneRegistration() async {
 /// Test verification flow
 Future<void> testVerificationFlow() async {
   final authService = AuthService();
-  
+
   try {
     print('🧪 Testing verification flow...');
-    
+
     // Check current verification status
     final emailVerified = await authService.isEmailVerified();
     final phoneVerified = await authService.isPhoneVerified();
     final fullyVerified = await authService.isUserFullyVerified();
-    
+
     print('📧 Email verified: $emailVerified');
     print('📱 Phone verified: $phoneVerified');
     print('✅ Fully verified: $fullyVerified');
-    
+
     if (!emailVerified) {
       print('📧 Sending email verification...');
       await authService.sendEmailVerification();
     }
-    
   } catch (e) {
     print('❌ Verification flow error: $e');
   }

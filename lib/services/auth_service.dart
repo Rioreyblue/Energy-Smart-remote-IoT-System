@@ -1,8 +1,11 @@
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:google_sign_in/google_sign_in.dart';
 import '../models/user_model.dart';
 import '../utils/validation_utils.dart';
 import 'database_service.dart';
+import '../utils/app_logger.dart';
+import 'phone_auth_service.dart';
 
 class AuthService {
   final FirebaseAuth _auth = FirebaseAuth.instance;
@@ -24,6 +27,13 @@ class AuthService {
     String password,
   ) async {
     try {
+      // Check if there's a different user already signed in (from previous session)
+      final currentUser = _auth.currentUser;
+      if (currentUser != null) {
+        // Clear old user's verification status
+        await _clearVerificationStatus(currentUser.uid);
+      }
+
       final UserCredential result = await _auth.signInWithEmailAndPassword(
         email: email,
         password: password,
@@ -110,7 +120,32 @@ class AuthService {
     }
   }
 
-  // Register new user with phone number
+  /// Send phone verification OTP via SmsChef (post-registration flow).
+  Future<void> sendPhoneVerificationOtp(String phoneNumber) async {
+    try {
+      final phoneAuthService = PhoneAuthService();
+      final sent = await phoneAuthService.verifyPhoneNumber(phoneNumber);
+
+      if (!sent) {
+        final error =
+            phoneAuthService.error ??
+            'Failed to send verification code. Please try again.';
+        throw Exception(error);
+      }
+
+      // Ensure legacy Firebase identifiers are cleared when using SmsChef.
+      _verificationId = null;
+      _resendToken = null;
+    } catch (e) {
+      AppLogger.e('[AuthService] ❌ Error sending phone OTP: $e');
+      throw _handleAuthError(e);
+    }
+  }
+
+  @Deprecated(
+    'Phone-only registration has been removed. Use registerUserWithEmail '
+    'followed by sendPhoneVerificationOtp instead.',
+  )
   Future<String?> registerUserWithPhone({
     required String phoneNumber,
     required String firstName,
@@ -120,155 +155,12 @@ class AuthService {
     required String energyProvider,
     required String address,
   }) async {
-    try {
-      // Validate inputs
-      _validatePhoneRegistrationInputs(
-        phoneNumber: phoneNumber,
-        firstName: firstName,
-        lastName: lastName,
-        email: email,
-        address: address,
-      );
-
-      // Check unique constraints
-      await _validateUniqueConstraints(
-        email,
-        phoneNumber,
-        firstName,
-        lastName,
-        middleName,
-      );
-
-      // Send OTP to phone number
-      await _auth.verifyPhoneNumber(
-        phoneNumber:
-            '+63${phoneNumber.substring(1)}', // Convert to international format
-        timeout: const Duration(seconds: 60),
-        verificationCompleted: (PhoneAuthCredential credential) async {
-          // Auto-verification completed
-          print('✅ Auto verification completed for phone: $phoneNumber');
-          await _completePhoneRegistration(
-            credential: credential,
-            firstName: firstName,
-            lastName: lastName,
-            middleName: middleName,
-            email: email,
-            phoneNumber: phoneNumber,
-            energyProvider: energyProvider,
-            address: address,
-          );
-        },
-        verificationFailed: (FirebaseAuthException e) {
-          print('❌ Phone verification failed: ${e.code} - ${e.message}');
-          throw _handleAuthError(e);
-        },
-        codeSent: (String verificationId, int? resendToken) {
-          print('✅ SMS code sent! Verification ID: $verificationId');
-          _verificationId = verificationId;
-          _resendToken = resendToken;
-        },
-        codeAutoRetrievalTimeout: (String verificationId) {
-          print('⏱️ Auto retrieval timeout: $verificationId');
-          _verificationId = verificationId;
-        },
-      );
-
-      return _verificationId;
-    } catch (e) {
-      throw _handleAuthError(e);
-    }
-  }
-
-  // Complete phone registration after OTP verification
-  Future<UserModel?> completePhoneRegistration({
-    required String otp,
-    required String firstName,
-    required String lastName,
-    required String middleName,
-    required String email,
-    required String phoneNumber,
-    required String energyProvider,
-    required String address,
-  }) async {
-    try {
-      if (_verificationId == null) {
-        throw Exception('Verification ID not found. Please try again.');
-      }
-
-      print('🔐 Attempting phone verification with OTP: $otp');
-
-      // Create credential with OTP
-      final PhoneAuthCredential credential = PhoneAuthProvider.credential(
-        verificationId: _verificationId!,
-        smsCode: otp,
-      );
-
-      return await _completePhoneRegistration(
-        credential: credential,
-        firstName: firstName,
-        lastName: lastName,
-        middleName: middleName,
-        email: email,
-        phoneNumber: phoneNumber,
-        energyProvider: energyProvider,
-        address: address,
-      );
-    } catch (e) {
-      print('❌ Error in completePhoneRegistration: $e');
-      throw _handleAuthError(e);
-    }
-  }
-
-  // Private method to complete phone registration
-  Future<UserModel?> _completePhoneRegistration({
-    required PhoneAuthCredential credential,
-    required String firstName,
-    required String lastName,
-    required String middleName,
-    required String email,
-    required String phoneNumber,
-    required String energyProvider,
-    required String address,
-  }) async {
-    try {
-      // Sign in with phone credential
-      final UserCredential result = await _auth.signInWithCredential(
-        credential,
-      );
-
-      if (result.user != null) {
-        print(
-          '✅ Phone authentication successful for user: ${result.user!.uid}',
-        );
-
-        // Create user model
-        final userModel = UserModel(
-          uid: result.user!.uid,
-          email: email,
-          firstName: firstName,
-          lastName: lastName,
-          middleName: middleName,
-          mobileNumber: phoneNumber,
-          energyProvider: energyProvider,
-          address: address,
-          createdAt: DateTime.now(),
-          isApproved: false,
-          isPhoneVerified: true,
-        );
-
-        // Save organized data
-        await _saveUserDataOrganized(userModel);
-
-        // Save login state
-        await _saveLoginState(true);
-
-        return userModel;
-      }
-      return null;
-    } catch (e) {
-      print('❌ Error in _completePhoneRegistration: $e');
-      throw _handleAuthError(e);
-    }
+    AppLogger.w(
+      '[AuthService] ⚠️ registerUserWithPhone is deprecated. This call only '
+      'triggers SmsChef OTP delivery for existing accounts.',
+    );
+    await sendPhoneVerificationOtp(phoneNumber);
+    return null;
   }
 
   // Validate registration inputs
@@ -304,41 +196,6 @@ class AuthService {
 
     if (!ValidationUtils.isValidMobileNumber(mobileNumber)) {
       throw Exception('Please enter a valid mobile number (09XXXXXXXXX)');
-    }
-
-    final addressError = ValidationUtils.validateAddress(address);
-    if (addressError != null) {
-      throw Exception(addressError);
-    }
-  }
-
-  // Validate phone registration inputs
-  void _validatePhoneRegistrationInputs({
-    required String phoneNumber,
-    required String firstName,
-    required String lastName,
-    required String email,
-    required String address,
-  }) {
-    if (!ValidationUtils.isValidEmail(email)) {
-      throw Exception('Please enter a valid email address');
-    }
-
-    if (!ValidationUtils.isValidMobileNumber(phoneNumber)) {
-      throw Exception('Please enter a valid mobile number (09XXXXXXXXX)');
-    }
-
-    final firstNameError = ValidationUtils.validateName(
-      firstName,
-      'First name',
-    );
-    if (firstNameError != null) {
-      throw Exception(firstNameError);
-    }
-
-    final lastNameError = ValidationUtils.validateName(lastName, 'Last name');
-    if (lastNameError != null) {
-      throw Exception(lastNameError);
     }
 
     final addressError = ValidationUtils.validateAddress(address);
@@ -389,6 +246,7 @@ class AuthService {
         'email': userModel.email,
         'firstName': userModel.firstName,
         'lastName': userModel.lastName,
+        'verificationMethod': userModel.isPhoneVerified ? 'phone' : 'email',
         'energyProvider': userModel.energyProvider,
         'address': userModel.address,
         'createdAt': userModel.createdAt.toIso8601String(),
@@ -403,6 +261,7 @@ class AuthService {
         'lastName': userModel.lastName,
         'middleName': userModel.middleName,
         'mobileNumber': userModel.mobileNumber,
+        'verificationMethod': userModel.isPhoneVerified ? 'phone' : 'email',
         'energyProvider': userModel.energyProvider,
         'address': userModel.address,
         'createdAt': userModel.createdAt.toIso8601String(),
@@ -427,27 +286,48 @@ class AuthService {
       }
 
       if (user.emailVerified) {
-        print('✅ Email already verified for: ${user.email}');
+        AppLogger.i(
+          '[AuthService] ✅ Email already verified for: ${user.email}',
+        );
         return;
       }
 
       await user.sendEmailVerification();
-      print('✅ Email verification sent to: ${user.email}');
+      AppLogger.i('[AuthService] ✅ Email verification sent to: ${user.email}');
     } catch (e) {
-      print('❌ Error sending email verification: $e');
+      AppLogger.e('[AuthService] ❌ Error sending email verification: $e');
       throw _handleAuthError(e);
     }
   }
 
-  // Check if email is verified
+  // Check if email is verified (checks SharedPreferences first)
   Future<bool> isEmailVerified() async {
     try {
       final user = _auth.currentUser;
       if (user == null) return false;
 
+      // Check SharedPreferences first
+      final prefsVerified = await _getVerificationStatusFromPrefs(
+        user.uid,
+        'email',
+      );
+      if (prefsVerified != null && prefsVerified) {
+        AppLogger.d('[AuthService] Email verified from SharedPreferences');
+        return true;
+      }
+
+      // Fallback to Firebase check
       await user.reload();
-      return user.emailVerified;
+      final isVerified = user.emailVerified;
+
+      // Save to SharedPreferences if verified
+      if (isVerified) {
+        await _saveVerificationStatus(user.uid, 'email', true);
+      }
+
+      return isVerified;
     } catch (e) {
+      AppLogger.e('[AuthService] Error checking email verification: $e');
       return false;
     }
   }
@@ -460,20 +340,26 @@ class AuthService {
         throw Exception('No user found. Please log in again.');
       }
 
-      print('🔍 Checking email verification status for: ${user.email}');
+      AppLogger.d(
+        '[AuthService] 🔍 Checking email verification status for: ${user.email}',
+      );
       await user.reload();
 
       if (user.emailVerified) {
-        print('✅ Email verified successfully for: ${user.email}');
+        AppLogger.i(
+          '[AuthService] ✅ Email verified successfully for: ${user.email}',
+        );
         // Update user data to mark email as verified
         await _updateUserVerificationStatus(user.uid, isEmailVerified: true);
+        // Save to SharedPreferences for persistence
+        await _saveVerificationStatus(user.uid, 'email', true);
         return true;
       }
 
-      print('❌ Email not yet verified for: ${user.email}');
+      AppLogger.e('[AuthService] ❌ Email not yet verified for: ${user.email}');
       return false;
     } catch (e) {
-      print('❌ Error in verifyEmail: $e');
+      AppLogger.e('[AuthService] ❌ Error in verifyEmail: $e');
       throw _handleAuthError(e);
     }
   }
@@ -511,18 +397,40 @@ class AuthService {
     try {
       // Get Firestore profile
       final profile = await _db.getUserProfile(uid);
-      if (profile == null) return null;
+      if (profile == null) {
+        AppLogger.w('[AuthService] Profile is null for uid: $uid');
+        return null;
+      }
 
       // Get RTDB live user (optional)
       final live = await _db.getRealtimeUser(uid) ?? {};
+
+      // Debug: Log mobile number sources (support both keys: mobileNumber/phoneNumber)
+      final mobileFromLive =
+          (live['mobileNumber'] ?? live['phoneNumber']) as String?;
+      final mobileFromProfile =
+          (profile['mobileNumber'] ?? profile['phoneNumber']) as String?;
+      final finalMobile = mobileFromLive ?? mobileFromProfile ?? '';
+
+      if (finalMobile.isEmpty) {
+        AppLogger.w(
+          '[AuthService] Mobile number not found in either source. '
+          'Live: ${mobileFromLive ?? "null"}, Profile: ${mobileFromProfile ?? "null"}',
+        );
+      } else {
+        AppLogger.d(
+          '[AuthService] Mobile number found: ${_maskPhoneNumber(finalMobile)}',
+        );
+      }
 
       return UserModel(
         uid: uid,
         email: (profile['email'] ?? live['email'] ?? '') as String,
         firstName: (profile['firstName'] ?? live['firstName'] ?? '') as String,
         lastName: (profile['lastName'] ?? live['lastName'] ?? '') as String,
-        middleName: (live['middleName'] ?? '') as String,
-        mobileNumber: (live['mobileNumber'] ?? '') as String,
+        middleName:
+            (live['middleName'] ?? profile['middleName'] ?? '') as String,
+        mobileNumber: finalMobile,
         energyProvider:
             (profile['energyProvider'] ?? live['energyProvider'] ?? '')
                 as String,
@@ -543,6 +451,7 @@ class AuthService {
         adminNotes: live['adminNotes'] as String?,
       );
     } catch (e) {
+      AppLogger.e('[AuthService] Error in _getUserData: $e');
       return null;
     }
   }
@@ -555,10 +464,122 @@ class AuthService {
     return null;
   }
 
+  // Sign in with Google
+  Future<UserModel?> signInWithGoogle() async {
+    try {
+      AppLogger.d('[AuthService] 🔐 Starting Google sign-in process');
+
+      // Initialize Google Sign In
+      final googleSignIn = GoogleSignIn();
+
+      // Check if there's a different user already signed in
+      final currentUser = _auth.currentUser;
+      if (currentUser != null) {
+        // Clear old user's verification status
+        await _clearVerificationStatus(currentUser.uid);
+      }
+
+      // Trigger the authentication flow
+      final GoogleSignInAccount? googleUser = await googleSignIn.signIn();
+
+      if (googleUser == null) {
+        // User cancelled the sign-in
+        AppLogger.d('[AuthService] User cancelled Google sign-in');
+        return null;
+      }
+
+      // Obtain the auth details from the request
+      final GoogleSignInAuthentication googleAuth =
+          await googleUser.authentication;
+
+      // Create a new credential
+      final credential = GoogleAuthProvider.credential(
+        accessToken: googleAuth.accessToken,
+        idToken: googleAuth.idToken,
+      );
+
+      // Sign in to Firebase with the Google credential
+      final UserCredential result = await _auth.signInWithCredential(
+        credential,
+      );
+
+      if (result.user != null) {
+        AppLogger.i(
+          '[AuthService] ✅ Google sign-in successful for user: ${result.user!.uid}',
+        );
+
+        // Check if user already exists in Firestore
+        var userData = await _getUserData(result.user!.uid);
+
+        if (userData == null) {
+          // New user - create user data from Google account
+          final displayName = result.user!.displayName ?? '';
+          final nameParts = displayName.split(' ');
+          final firstName = nameParts.isNotEmpty ? nameParts.first : '';
+          final lastName = nameParts.length > 1 ? nameParts.last : '';
+
+          userData = UserModel(
+            uid: result.user!.uid,
+            email: result.user!.email ?? '',
+            firstName: firstName,
+            lastName: lastName,
+            middleName: '',
+            mobileNumber: '',
+            energyProvider: '',
+            address: '',
+            createdAt: DateTime.now(),
+            isApproved: false,
+            isEmailVerified: result.user!.emailVerified,
+            isPhoneVerified: false,
+          );
+
+          // Save user data to Firestore and Realtime Database
+          await _saveUserDataOrganized(userData);
+          AppLogger.i(
+            '[AuthService] ✅ Created new user profile from Google account',
+          );
+        } else {
+          // Existing user - update email verification status if needed
+          if (result.user!.emailVerified && !userData.isEmailVerified) {
+            userData = userData.copyWith(isEmailVerified: true);
+            await _saveUserDataOrganized(userData);
+          }
+        }
+
+        // Save login state
+        await _saveLoginState(true);
+
+        return userData;
+      }
+
+      return null;
+    } catch (e) {
+      AppLogger.e('[AuthService] ❌ Error in signInWithGoogle: $e');
+      throw _handleAuthError(e);
+    }
+  }
+
   // Sign out
   Future<void> signOut() async {
     try {
+      final user = _auth.currentUser;
+      final uid = user?.uid;
+
+      // Sign out Firebase
       await _auth.signOut();
+      // Sign out Google if previously signed in
+      try {
+        final googleSignIn = GoogleSignIn();
+        if (await googleSignIn.isSignedIn()) {
+          await googleSignIn.signOut();
+        }
+      } catch (_) {}
+
+      // Clear verification status from SharedPreferences
+      if (uid != null) {
+        await _clearVerificationStatus(uid);
+      }
+
       await _saveLoginState(false);
     } catch (e) {
       throw _handleAuthError(e);
@@ -577,10 +598,62 @@ class AuthService {
     return prefs.getBool('isLoggedIn') ?? false;
   }
 
+  // Save verification status to SharedPreferences
+  Future<void> _saveVerificationStatus(
+    String uid,
+    String type,
+    bool isVerified,
+  ) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final key = '${type}_verified_$uid';
+      await prefs.setBool(key, isVerified);
+      AppLogger.d(
+        '[AuthService] Saved $type verification status to SharedPreferences: $isVerified',
+      );
+    } catch (e) {
+      AppLogger.e(
+        '[AuthService] Error saving verification status to SharedPreferences: $e',
+      );
+    }
+  }
+
+  // Get verification status from SharedPreferences
+  Future<bool?> _getVerificationStatusFromPrefs(String uid, String type) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final key = '${type}_verified_$uid';
+      return prefs.getBool(key);
+    } catch (e) {
+      AppLogger.e(
+        '[AuthService] Error reading verification status from SharedPreferences: $e',
+      );
+      return null;
+    }
+  }
+
+  // Clear verification status from SharedPreferences
+  Future<void> _clearVerificationStatus(String uid) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.remove('email_verified_$uid');
+      await prefs.remove('phone_verified_$uid');
+      AppLogger.d(
+        '[AuthService] Cleared verification status from SharedPreferences for user: $uid',
+      );
+    } catch (e) {
+      AppLogger.e(
+        '[AuthService] Error clearing verification status from SharedPreferences: $e',
+      );
+    }
+  }
+
   // Handle authentication errors
   String _handleAuthError(dynamic error) {
     if (error is FirebaseAuthException) {
-      print('🔥 Firebase Auth Error: ${error.code} - ${error.message}');
+      AppLogger.e(
+        '[AuthService] 🔥 Firebase Auth Error: ${error.code} - ${error.message}',
+      );
       switch (error.code) {
         case 'user-not-found':
           return 'No user found with this email address.';
@@ -612,7 +685,7 @@ class AuthService {
           return 'Authentication failed: ${error.message}';
       }
     }
-    print('🔥 General Error: $error');
+    AppLogger.e('[AuthService] 🔥 General Error: $error');
     return 'An unexpected error occurred. Please try again.';
   }
 
@@ -625,39 +698,84 @@ class AuthService {
     }
   }
 
-  // Verify phone with OTP
+  // Change user password
+  Future<bool> changePassword({
+    required String currentPassword,
+    required String newPassword,
+  }) async {
+    try {
+      final user = _auth.currentUser;
+      if (user == null) throw Exception('No user logged in');
+
+      // Reauthenticate with current password
+      final credential = EmailAuthProvider.credential(
+        email: user.email!,
+        password: currentPassword,
+      );
+      await user.reauthenticateWithCredential(credential);
+
+      // Update password
+      await user.updatePassword(newPassword);
+
+      AppLogger.i('[AuthService] Password changed successfully');
+      return true;
+    } catch (e) {
+      AppLogger.e('[AuthService] Error changing password: $e');
+      throw _handleAuthError(e);
+    }
+  }
+
+  // Verify phone with OTP via SmsChef / PhoneAuthService
   Future<bool> verifyPhoneWithOTP(String otp) async {
     try {
-      if (_verificationId == null) {
-        throw Exception('Verification ID not found. Please try again.');
-      }
-
-      print('🔐 Verifying phone with OTP: $otp');
-
-      // Create credential with OTP
-      final PhoneAuthCredential credential = PhoneAuthProvider.credential(
-        verificationId: _verificationId!,
-        smsCode: otp,
-      );
-
-      // Sign in with phone credential
-      final UserCredential result = await _auth.signInWithCredential(
-        credential,
-      );
-
-      if (result.user != null) {
-        print('✅ Phone verification successful for user: ${result.user!.uid}');
-        // Update user data to mark phone as verified
-        await _updateUserVerificationStatus(
-          result.user!.uid,
-          isPhoneVerified: true,
+      // Legacy: registration flow still uses Firebase phone auth
+      if (_verificationId != null) {
+        AppLogger.d(
+          '[AuthService] 🔐 Verifying phone with legacy Firebase flow',
         );
-        return true;
+
+        final credential = PhoneAuthProvider.credential(
+          verificationId: _verificationId!,
+          smsCode: otp,
+        );
+
+        final result = await _auth.signInWithCredential(credential);
+
+        if (result.user != null) {
+          AppLogger.i(
+            '[AuthService] ✅ Phone verification successful for user: ${result.user!.uid}',
+          );
+          await _updateUserVerificationStatus(
+            result.user!.uid,
+            isPhoneVerified: true,
+          );
+          await _saveVerificationStatus(result.user!.uid, 'phone', true);
+          return true;
+        }
+
+        return false;
       }
 
-      return false;
+      // Default: use SmsChef + PhoneAuthService session
+      final phoneAuthService = PhoneAuthService();
+      final isVerified = await phoneAuthService.verifyOTP(otp);
+
+      if (!isVerified) {
+        final errorMessage =
+            phoneAuthService.error ??
+            'Invalid verification code. Please try again.';
+        throw Exception(errorMessage);
+      }
+
+      final user = _auth.currentUser;
+      if (user != null) {
+        await _saveVerificationStatus(user.uid, 'phone', true);
+      }
+
+      AppLogger.i('[AuthService] ✅ Phone verification completed via SmsChef');
+      return true;
     } catch (e) {
-      print('❌ Error in verifyPhoneWithOTP: $e');
+      AppLogger.e('[AuthService] ❌ Error in verifyPhoneWithOTP: $e');
       throw _handleAuthError(e);
     }
   }
@@ -672,13 +790,17 @@ class AuthService {
       final updateData = <String, dynamic>{};
       if (isEmailVerified != null) {
         updateData['isEmailVerified'] = isEmailVerified;
+        // Also save to SharedPreferences
+        await _saveVerificationStatus(uid, 'email', isEmailVerified);
       }
       if (isPhoneVerified != null) {
         updateData['isPhoneVerified'] = isPhoneVerified;
+        // Also save to SharedPreferences
+        await _saveVerificationStatus(uid, 'phone', isPhoneVerified);
       }
       // Update RTDB only for live verification state
       await _db.updateRealtimeUser(uid, updateData);
-      print('✅ Updated verification status for user: $uid');
+      AppLogger.i('[AuthService] ✅ Updated verification status for user: $uid');
     } catch (e) {
       throw Exception('Failed to update verification status: ${e.toString()}');
     }
@@ -686,62 +808,201 @@ class AuthService {
 
   // Resend verification code
   Future<void> resendVerificationCode({
-    required String phoneNumber,
+    String? phoneNumber,
     required String verificationType,
   }) async {
     try {
-      print('🔄 Resending $verificationType verification...');
+      AppLogger.d(
+        '[AuthService] 🔄 Resending $verificationType verification...',
+      );
 
       if (verificationType == 'phone') {
-        await _auth.verifyPhoneNumber(
-          phoneNumber: '+63${phoneNumber.substring(1)}',
-          timeout: const Duration(seconds: 60),
-          verificationCompleted: (PhoneAuthCredential credential) async {
-            print('✅ Auto verification completed during resend');
-          },
-          verificationFailed: (FirebaseAuthException e) {
-            print(
-              '❌ Phone verification failed during resend: ${e.code} - ${e.message}',
+        // Get phone number from parameter or current user data
+        String? phoneToUse = phoneNumber;
+
+        if (phoneToUse == null || phoneToUse.trim().isEmpty) {
+          AppLogger.d(
+            '[AuthService] Phone number not provided, attempting to retrieve from user data...',
+          );
+          final user = _auth.currentUser;
+          if (user != null) {
+            final userData = await _getUserData(user.uid);
+            if (userData == null) {
+              AppLogger.e(
+                '[AuthService] User data is null for uid: ${user.uid}',
+              );
+              throw Exception('User data not found. Please log in again.');
+            }
+            phoneToUse = userData.mobileNumber;
+            AppLogger.d(
+              '[AuthService] Retrieved phone number from user data: ${phoneToUse.isNotEmpty ? 'Found: ${_maskPhoneNumber(phoneToUse)}' : 'Empty string'}',
             );
-            throw _handleAuthError(e);
-          },
-          codeSent: (String verificationId, int? resendToken) {
-            print('✅ SMS code resent! Verification ID: $verificationId');
-            _verificationId = verificationId;
-            _resendToken = resendToken;
-          },
-          codeAutoRetrievalTimeout: (String verificationId) {
-            print('⏱️ Auto retrieval timeout during resend: $verificationId');
-            _verificationId = verificationId;
-          },
-          forceResendingToken: _resendToken,
-        );
+          } else {
+            AppLogger.e('[AuthService] No current user found');
+            throw Exception('No user found. Please log in again.');
+          }
+        }
+
+        if (phoneToUse.trim().isEmpty) {
+          throw Exception(
+            'Phone number not found. Please provide a valid phone number.',
+          );
+        }
+
+        // If verificationId is still present we are likely in the legacy
+        // registration flow, so use Firebase phone auth again.
+        if (_verificationId != null) {
+          final formattedPhone = _formatPhoneNumber(phoneToUse);
+          AppLogger.d(
+            '[AuthService] Using formatted phone number for legacy resend: ${_maskPhoneNumber(formattedPhone)}',
+          );
+
+          await _auth.verifyPhoneNumber(
+            phoneNumber: formattedPhone,
+            timeout: const Duration(seconds: 60),
+            verificationCompleted: (PhoneAuthCredential credential) async {
+              AppLogger.i(
+                '[AuthService] ✅ Auto verification completed during legacy resend',
+              );
+            },
+            verificationFailed: (FirebaseAuthException e) {
+              AppLogger.i(
+                '❌ Phone verification failed during legacy resend: ${e.code} - ${e.message}',
+              );
+              throw _handleAuthError(e);
+            },
+            codeSent: (String verificationId, int? resendToken) {
+              AppLogger.i(
+                '[AuthService] ✅ SMS code resent (legacy)! Verification ID: $verificationId',
+              );
+              _verificationId = verificationId;
+              _resendToken = resendToken;
+            },
+            codeAutoRetrievalTimeout: (String verificationId) {
+              AppLogger.w(
+                '[AuthService] ⏱️ Auto retrieval timeout during legacy resend: $verificationId',
+              );
+              _verificationId = verificationId;
+            },
+            forceResendingToken: _resendToken,
+          );
+        } else {
+          final phoneAuthService = PhoneAuthService();
+          final otpSent = await phoneAuthService.verifyPhoneNumber(phoneToUse);
+
+          if (!otpSent) {
+            final errorMessage =
+                phoneAuthService.error ??
+                'Failed to send verification code. Please try again.';
+            throw Exception(errorMessage);
+          }
+        }
       } else if (verificationType == 'email') {
         final user = _auth.currentUser;
         if (user != null) {
-          print('📧 Resending email verification to: ${user.email}');
+          AppLogger.i(
+            '[AuthService] 📧 Resending email verification to: ${user.email}',
+          );
           await user.sendEmailVerification();
-          print('✅ Email verification resent successfully');
+          AppLogger.i('[AuthService] ✅ Email verification resent successfully');
         } else {
           throw Exception('No user found. Please log in again.');
         }
       }
     } catch (e) {
-      print('❌ Error resending verification: $e');
+      AppLogger.e('[AuthService] ❌ Error resending verification: $e');
       throw _handleAuthError(e);
     }
   }
 
-  /// Check if phone is verified (from database)
+  // Safely format phone number to E.164. Defaults to PH +63 rules.
+  String _formatPhoneNumber(String input) {
+    if (input.trim().isEmpty) {
+      throw Exception(
+        'Invalid phone number: Cannot format an empty phone number.',
+      );
+    }
+
+    String cleaned = input.replaceAll(RegExp(r'[^\d+]'), '');
+    if (cleaned.isEmpty) {
+      throw Exception('Invalid phone number: No digits found in "$input".');
+    }
+
+    if (cleaned.startsWith('+')) {
+      // Already in international format, validate it has enough digits
+      if (cleaned.length < 12) {
+        throw Exception(
+          'Invalid phone number: International format requires at least 12 characters (e.g., +639123456789).',
+        );
+      }
+      return cleaned;
+    }
+
+    if (cleaned.startsWith('0')) {
+      // Local PH number like 09xxxxxxxxx -> +639xxxxxxxxx
+      if (cleaned.length < 11) {
+        throw Exception(
+          'Invalid phone number: Philippine local format requires 11 digits (e.g., 09123456789).',
+        );
+      }
+      return '+63${cleaned.substring(1)}';
+    }
+
+    if (cleaned.startsWith('63')) {
+      // Already has country code but missing +
+      if (cleaned.length < 12) {
+        throw Exception(
+          'Invalid phone number: Philippine format with country code requires 12 digits (e.g., 639123456789).',
+        );
+      }
+      return '+$cleaned';
+    }
+
+    // Fallback: assume already country code-less local, prefix +63
+    if (cleaned.length < 10) {
+      throw Exception(
+        'Invalid phone number: Phone number too short. Expected at least 10 digits.',
+      );
+    }
+    return '+63$cleaned';
+  }
+
+  // Mask phone number for secure logging (shows only last 4 digits)
+  String _maskPhoneNumber(String phoneNumber) {
+    if (phoneNumber.length <= 4) return '****';
+    final lastFour = phoneNumber.substring(phoneNumber.length - 4);
+    final masked = '*' * (phoneNumber.length - 4);
+    return '$masked$lastFour';
+  }
+
+  /// Check if phone is verified (checks SharedPreferences first)
   Future<bool> isPhoneVerified() async {
     try {
       final user = _auth.currentUser;
       if (user == null) return false;
 
+      // Check SharedPreferences first
+      final prefsVerified = await _getVerificationStatusFromPrefs(
+        user.uid,
+        'phone',
+      );
+      if (prefsVerified != null && prefsVerified) {
+        AppLogger.d('[AuthService] Phone verified from SharedPreferences');
+        return true;
+      }
+
+      // Fallback to database check
       final userData = await _getUserData(user.uid);
-      return userData?.isPhoneVerified ?? false;
+      final isVerified = userData?.isPhoneVerified ?? false;
+
+      // Save to SharedPreferences if verified
+      if (isVerified) {
+        await _saveVerificationStatus(user.uid, 'phone', true);
+      }
+
+      return isVerified;
     } catch (e) {
-      print('❌ Error checking phone verification: $e');
+      AppLogger.e('[AuthService] ❌ Error checking phone verification: $e');
       return false;
     }
   }
@@ -753,7 +1014,7 @@ class AuthService {
       final phoneVerified = await isPhoneVerified();
       return emailVerified && phoneVerified;
     } catch (e) {
-      print('❌ Error checking full verification: $e');
+      AppLogger.e('[AuthService] ❌ Error checking full verification: $e');
       return false;
     }
   }
@@ -786,21 +1047,42 @@ class AuthService {
     }
   }
 
-  // Update verification attempts
+  // Update verification attempts with automatic reset after 2 minutes
   Future<void> updateVerificationAttempts(String uid) async {
     try {
       final userData = await _getUserData(uid);
       if (userData == null) return;
 
-      final newAttempts = userData.verificationAttempts + 1;
       final now = DateTime.now();
+      int newAttempts = 1;
+
+      // Check if last verification attempt was more than 2 minutes ago
+      if (userData.lastVerificationAttempt != null) {
+        final timeSinceLastAttempt = now.difference(
+          userData.lastVerificationAttempt!,
+        );
+
+        // Reset attempts if 2 minutes (120 seconds) have passed
+        if (timeSinceLastAttempt.inSeconds >= 120) {
+          newAttempts = 1;
+          AppLogger.i(
+            '[AuthService] Verification attempts reset after 2 minutes',
+          );
+        } else {
+          // Increment attempts if within 2 minutes
+          newAttempts = userData.verificationAttempts + 1;
+        }
+      }
 
       // Update RTDB only
       await _db.updateRealtimeUser(uid, {
         'verificationAttempts': newAttempts,
         'lastVerificationAttempt': now.toIso8601String(),
       });
+
+      AppLogger.d('[AuthService] Verification attempts updated: $newAttempts');
     } catch (e) {
+      AppLogger.e('[AuthService] Failed to update verification attempts: $e');
       throw Exception(
         'Failed to update verification attempts: ${e.toString()}',
       );

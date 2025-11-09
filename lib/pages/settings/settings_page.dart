@@ -3,6 +3,9 @@ import 'package:iconsax/iconsax.dart';
 import 'package:exercise_app/constants/constant.dart';
 import 'package:exercise_app/components/header.dart';
 import 'package:exercise_app/services/settings_service.dart';
+import 'package:exercise_app/services/auth_service.dart';
+import 'package:exercise_app/services/notification_service.dart';
+import 'package:exercise_app/utils/snackbar_utils.dart';
 
 class SettingsPage extends StatefulWidget {
   const SettingsPage({super.key});
@@ -14,24 +17,49 @@ class SettingsPage extends StatefulWidget {
 class _SettingsPageState extends State<SettingsPage> {
   // Services
   final SettingsService _settingsService = SettingsService();
+  final AuthService _authService = AuthService();
+  final NotificationService _notificationService = NotificationService();
 
   // User Profile State
-  String _userName = 'Rey Francisco';
-  String _userEmail = 'rey.francisco@example.com';
-  String _userPhone = '+63 963 559 5848';
-  String _userAddress = '123 Energy Street, Metro Manila';
+  String _userName = '';
+  String _userEmail = '';
+  String _userPhone = '';
+  String _userAddress = '';
+
+  // Controllers for profile editing
+  final TextEditingController _nameController = TextEditingController();
+  final TextEditingController _emailController = TextEditingController();
+  final TextEditingController _phoneController = TextEditingController();
+  final TextEditingController _addressController = TextEditingController();
+
+  // Controllers for password change
+  final TextEditingController _currentPasswordController =
+      TextEditingController();
+  final TextEditingController _newPasswordController = TextEditingController();
+  final TextEditingController _confirmPasswordController =
+      TextEditingController();
 
   // Settings State
   bool _pushNotifications = true;
-  double _alertThreshold = 80.0;
-  String _energyRate = '12.50';
-  String _themeMode = 'system';
   bool _isLoading = false;
 
   @override
   void initState() {
     super.initState();
     _loadSettings();
+    _loadUserProfile();
+  }
+
+  @override
+  void dispose() {
+    _nameController.dispose();
+    _emailController.dispose();
+    _phoneController.dispose();
+    _addressController.dispose();
+    _currentPasswordController.dispose();
+    _newPasswordController.dispose();
+    _confirmPasswordController.dispose();
+    super.dispose();
   }
 
   // Load existing settings
@@ -44,14 +72,74 @@ class _SettingsPageState extends State<SettingsPage> {
 
       setState(() {
         _pushNotifications = _settingsService.getPushNotifications();
-        _alertThreshold = _settingsService.getAlertThreshold();
-        _energyRate = _settingsService.getDefaultRate().toString();
-        _themeMode = _settingsService.getThemeMode();
       });
     } catch (e) {
       debugPrint('Error loading settings: $e');
     } finally {
       setState(() => _isLoading = false);
+    }
+  }
+
+  // Load user profile from Firebase Auth and Firestore
+  Future<void> _loadUserProfile() async {
+    try {
+      // Get email from Firebase Auth (works for both email/password and Google sign-in)
+      final currentUser = _authService.currentUser;
+      final email = currentUser?.email ?? '';
+
+      // Get user data from AuthService (UserModel from Firestore)
+      final userData = await _authService.getCurrentUserData();
+
+      String name = '';
+      String phone = '';
+      String address = '';
+
+      if (userData != null) {
+        // Construct full name from UserModel
+        final nameParts = <String>[];
+        if (userData.firstName.isNotEmpty) nameParts.add(userData.firstName);
+        if (userData.middleName.isNotEmpty) nameParts.add(userData.middleName);
+        if (userData.lastName.isNotEmpty) nameParts.add(userData.lastName);
+        name = nameParts.join(' ').trim();
+
+        // Get phone from UserModel or Firebase Auth
+        phone =
+            userData.mobileNumber.isNotEmpty
+                ? userData.mobileNumber
+                : currentUser?.phoneNumber ?? '';
+
+        // Get address from UserModel
+        address = userData.address;
+      } else {
+        // Fallback to Firebase Auth if UserModel is not available
+        name = currentUser?.displayName ?? '';
+        phone = currentUser?.phoneNumber ?? '';
+      }
+
+      // Try to get additional profile data from SettingsService (Firestore subcollection)
+      final profile = await _settingsService.getUserProfile();
+      if (profile != null) {
+        // Use profile data if available, otherwise use the values from above
+        name = profile['name']?.toString().trim() ?? name;
+        phone = profile['phone']?.toString().trim() ?? phone;
+        address = profile['address']?.toString().trim() ?? address;
+      }
+
+      setState(() {
+        _userName = name;
+        _userEmail = email;
+        _userPhone = phone;
+        _userAddress = address;
+      });
+    } catch (e) {
+      debugPrint('Error loading user profile: $e');
+      // Set email from Firebase Auth as fallback even if other data fails
+      final currentUser = _authService.currentUser;
+      if (currentUser?.email != null) {
+        setState(() {
+          _userEmail = currentUser!.email!;
+        });
+      }
     }
   }
 
@@ -84,20 +172,12 @@ class _SettingsPageState extends State<SettingsPage> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Header(
-                      username: _userName,
-                      responsiveFontSize: _responsiveFontSize,
-                    ),
+                    Header(responsiveFontSize: _responsiveFontSize),
                     SizedBox(height: Insets.lg),
 
                     // Account Section
                     _buildSectionHeader(context, 'Account', Iconsax.user),
                     _buildAccountSection(context),
-                    SizedBox(height: Insets.lg),
-
-                    // Energy Section
-                    _buildSectionHeader(context, 'Energy', Iconsax.flash_1),
-                    _buildEnergySection(context),
                     SizedBox(height: Insets.lg),
 
                     // App Section
@@ -174,68 +254,6 @@ class _SettingsPageState extends State<SettingsPage> {
             Iconsax.lock,
             () => _showChangePasswordDialog(context),
           ),
-          _buildDivider(),
-          _buildListTile(
-            context,
-            'Logout',
-            'Sign out of your account',
-            Iconsax.logout,
-            () => _showLogoutDialog(context),
-            isDestructive: true,
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildEnergySection(BuildContext context) {
-    return Container(
-      width: double.infinity,
-      padding: EdgeInsets.all(Insets.lg),
-      decoration: BoxDecoration(
-        color: Theme.of(context).colorScheme.surface,
-        borderRadius: BorderRadius.circular(16),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withAlpha((0.05 * 255).toInt()),
-            blurRadius: 8,
-            offset: const Offset(0, 2),
-          ),
-        ],
-      ),
-      child: Column(
-        children: [
-          _buildListTile(
-            context,
-            'Energy Rate (per kWh)',
-            '₱$_energyRate per kWh',
-            Iconsax.money,
-            () => _showEnergyRateDialog(context),
-          ),
-          _buildDivider(),
-          _buildListTile(
-            context,
-            'Alert Threshold',
-            '${_alertThreshold.toInt()}% of energy target',
-            Iconsax.warning_2,
-            () => _showAlertThresholdDialog(context),
-          ),
-          _buildDivider(),
-          _buildListTile(
-            context,
-            'Data Export / History',
-            'Export usage and billing history',
-            Iconsax.export,
-            () => _showDataExportDialog(context),
-          ),
-          _buildDivider(),
-          _buildListTile(
-            context,
-            'Manage Devices',
-            'Add or remove IoT devices',
-            Iconsax.devices,
-            () => _showDeviceManagementDialog(context),
-          ),
         ],
       ),
     );
@@ -269,14 +287,28 @@ class _SettingsPageState extends State<SettingsPage> {
           _buildDivider(),
           _buildListTile(
             context,
-            'Theme Mode',
-            _getThemeModeText(_themeMode),
-            Iconsax.moon,
-            () => _showThemeDialog(context),
+            'Test Notification',
+            'Send a test push notification',
+            Iconsax.notification_bing,
+            () => _testNotification(context),
           ),
         ],
       ),
     );
+  }
+
+  // Test notification
+  Future<void> _testNotification(BuildContext context) async {
+    try {
+      await _notificationService.sendTestNotification();
+      if (mounted) {
+        showSuccessSnackBar(context, 'Test notification sent!');
+      }
+    } catch (e) {
+      if (mounted) {
+        showErrorSnackBar(context, 'Failed to send test notification: $e');
+      }
+    }
   }
 
   Widget _buildSupportSection(BuildContext context) {
@@ -302,14 +334,6 @@ class _SettingsPageState extends State<SettingsPage> {
             'Version 1.0.0 • EnergySmart',
             Iconsax.info_circle,
             () => _showAboutDialog(context),
-          ),
-          _buildDivider(),
-          _buildListTile(
-            context,
-            'Help & Support',
-            'Get help and contact support',
-            Iconsax.message,
-            () => _navigateToSupport(),
           ),
         ],
       ),
@@ -386,7 +410,8 @@ class _SettingsPageState extends State<SettingsPage> {
       trailing: Switch(
         value: value,
         onChanged: onChanged,
-        activeColor: AppColor.accentGreen,
+        activeTrackColor: AppColor.accentGreen.withAlpha(180),
+        activeThumbColor: AppColor.accentGreen,
       ),
     );
   }
@@ -399,20 +424,6 @@ class _SettingsPageState extends State<SettingsPage> {
     );
   }
 
-  // Helper methods for display text
-  String _getThemeModeText(String mode) {
-    switch (mode) {
-      case 'light':
-        return 'Light Mode';
-      case 'dark':
-        return 'Dark Mode';
-      case 'system':
-        return 'System Default';
-      default:
-        return 'System Default';
-    }
-  }
-
   // Settings update methods
   Future<void> _updatePushNotifications(bool value) async {
     setState(() => _pushNotifications = value);
@@ -420,7 +431,18 @@ class _SettingsPageState extends State<SettingsPage> {
   }
 
   // Dialog methods
-  void _showEditProfileDialog(BuildContext context) {
+  Future<void> _showEditProfileDialog(BuildContext context) async {
+    // Reload profile data to ensure we have the latest information
+    await _loadUserProfile();
+
+    // Initialize controllers with current values after loading
+    _nameController.text = _userName;
+    _emailController.text = _userEmail;
+    _phoneController.text = _userPhone;
+    _addressController.text = _userAddress;
+
+    if (!mounted) return;
+
     showDialog(
       context: context,
       builder:
@@ -434,28 +456,169 @@ class _SettingsPageState extends State<SettingsPage> {
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  _buildTextField(
-                    'Name',
-                    _userName,
-                    (value) => _userName = value,
+                  _buildTextField('Name', _nameController),
+                  SizedBox(height: Insets.md),
+                  _buildReadOnlyTextField('Email', _emailController),
+                  SizedBox(height: Insets.sm),
+                  Text(
+                    'Email cannot be changed. Contact support if you need to update your email.',
+                    style: ResponsiveText.caption(context).copyWith(
+                      color: Theme.of(
+                        context,
+                      ).colorScheme.onSurface.withAlpha(153),
+                      fontSize: 11,
+                    ),
                   ),
                   SizedBox(height: Insets.md),
-                  _buildTextField(
-                    'Email',
-                    _userEmail,
-                    (value) => _userEmail = value,
+                  _buildTextField('Phone', _phoneController),
+                  SizedBox(height: Insets.md),
+                  _buildTextField('Address', _addressController),
+                ],
+              ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context),
+                child: Text('Cancel', style: ResponsiveText.body(context)),
+              ),
+              ElevatedButton(
+                onPressed: () async {
+                  await _saveProfile(context);
+                },
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: AppColor.accentGreen,
+                ),
+                child: Text('Save', style: ResponsiveText.body(context)),
+              ),
+            ],
+          ),
+    );
+  }
+
+  Widget _buildTextField(String label, TextEditingController controller) {
+    return TextFormField(
+      controller: controller,
+      decoration: InputDecoration(
+        labelText: label,
+        border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+      ),
+    );
+  }
+
+  Widget _buildReadOnlyTextField(
+    String label,
+    TextEditingController controller,
+  ) {
+    return TextFormField(
+      controller: controller,
+      enabled: false,
+      decoration: InputDecoration(
+        labelText: label,
+        border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+        disabledBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(8),
+          borderSide: BorderSide(
+            color: Theme.of(context).colorScheme.outline.withAlpha(102),
+          ),
+        ),
+      ),
+      style: TextStyle(
+        color: Theme.of(context).colorScheme.onSurface.withAlpha(153),
+      ),
+    );
+  }
+
+  // Save profile to Firestore (excluding email)
+  Future<void> _saveProfile(BuildContext context) async {
+    try {
+      // Don't update email - it should remain from Firebase Auth
+      // Only update name, phone, and address
+      final profileData = {
+        'name': _nameController.text.trim(),
+        'phone': _phoneController.text.trim(),
+        'address': _addressController.text.trim(),
+        'updatedAt': DateTime.now().toIso8601String(),
+      };
+
+      // Update profile in Firestore subcollection
+      await _settingsService.updateUserProfile(profileData);
+
+      // Update local state (keep email from Firebase Auth)
+      setState(() {
+        _userName = _nameController.text.trim();
+        // Keep _userEmail from Firebase Auth, don't update it
+        _userPhone = _phoneController.text.trim();
+        _userAddress = _addressController.text.trim();
+      });
+
+      Navigator.pop(context);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Profile updated successfully!'),
+          backgroundColor: AppColor.accentGreen,
+        ),
+      );
+    } catch (e) {
+      Navigator.pop(context);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Failed to update profile: $e'),
+          backgroundColor: AppColor.accentRed,
+        ),
+      );
+    }
+  }
+
+  void _showChangePasswordDialog(BuildContext context) {
+    // Clear controllers
+    _currentPasswordController.clear();
+    _newPasswordController.clear();
+    _confirmPasswordController.clear();
+
+    showDialog(
+      context: context,
+      builder:
+          (context) => AlertDialog(
+            backgroundColor: Theme.of(context).colorScheme.surface,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(16),
+            ),
+            title: Text('Change Password', style: ResponsiveText.stat(context)),
+            content: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  TextFormField(
+                    controller: _currentPasswordController,
+                    obscureText: true,
+                    decoration: InputDecoration(
+                      labelText: 'Current Password',
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                    ),
                   ),
                   SizedBox(height: Insets.md),
-                  _buildTextField(
-                    'Phone',
-                    _userPhone,
-                    (value) => _userPhone = value,
+                  TextFormField(
+                    controller: _newPasswordController,
+                    obscureText: true,
+                    decoration: InputDecoration(
+                      labelText: 'New Password',
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                    ),
                   ),
                   SizedBox(height: Insets.md),
-                  _buildTextField(
-                    'Address',
-                    _userAddress,
-                    (value) => _userAddress = value,
+                  TextFormField(
+                    controller: _confirmPasswordController,
+                    obscureText: true,
+                    decoration: InputDecoration(
+                      labelText: 'Confirm New Password',
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                    ),
                   ),
                 ],
               ),
@@ -466,76 +629,7 @@ class _SettingsPageState extends State<SettingsPage> {
                 child: Text('Cancel', style: ResponsiveText.body(context)),
               ),
               ElevatedButton(
-                onPressed: () {
-                  Navigator.pop(context);
-                  setState(() {});
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(
-                      content: Text('Profile updated successfully!'),
-                      backgroundColor: AppColor.accentGreen,
-                    ),
-                  );
-                },
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: AppColor.accentGreen,
-                ),
-                child: Text('Save', style: ResponsiveText.body(context)),
-              ),
-            ],
-          ),
-    );
-  }
-
-  Widget _buildTextField(
-    String label,
-    String value,
-    Function(String) onChanged,
-  ) {
-    return TextFormField(
-      initialValue: value,
-      decoration: InputDecoration(
-        labelText: label,
-        border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
-      ),
-      onChanged: onChanged,
-    );
-  }
-
-  void _showChangePasswordDialog(BuildContext context) {
-    showDialog(
-      context: context,
-      builder:
-          (context) => AlertDialog(
-            backgroundColor: Theme.of(context).colorScheme.surface,
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(16),
-            ),
-            title: Text('Change Password', style: ResponsiveText.stat(context)),
-            content: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                _buildTextField('Current Password', '', (value) {}),
-                SizedBox(height: Insets.md),
-                _buildTextField('New Password', '', (value) {}),
-                SizedBox(height: Insets.md),
-                _buildTextField('Confirm Password', '', (value) {}),
-              ],
-            ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(context),
-                child: Text('Cancel', style: ResponsiveText.body(context)),
-              ),
-              ElevatedButton(
-                onPressed: () {
-                  Navigator.pop(context);
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(
-                      content: Text('Password changed successfully!'),
-                      backgroundColor: AppColor.accentGreen,
-                    ),
-                  );
-                },
+                onPressed: () => _savePasswordChange(context),
                 style: ElevatedButton.styleFrom(
                   backgroundColor: AppColor.accentGreen,
                 ),
@@ -546,305 +640,75 @@ class _SettingsPageState extends State<SettingsPage> {
     );
   }
 
-  void _showEnergyRateDialog(BuildContext context) {
-    final TextEditingController controller = TextEditingController(
-      text: _energyRate,
-    );
+  Future<void> _savePasswordChange(BuildContext context) async {
+    // Validation
+    final currentPassword = _currentPasswordController.text.trim();
+    final newPassword = _newPasswordController.text.trim();
+    final confirmPassword = _confirmPasswordController.text.trim();
 
-    showDialog(
-      context: context,
-      builder:
-          (context) => AlertDialog(
-            backgroundColor: Theme.of(context).colorScheme.surface,
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(16),
-            ),
-            title: Text('Energy Rate', style: ResponsiveText.stat(context)),
-            content: TextFormField(
-              controller: controller,
-              decoration: InputDecoration(
-                labelText: 'Rate per kWh (₱)',
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                prefixText: '₱',
-              ),
-              keyboardType: TextInputType.number,
-            ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(context),
-                child: Text('Cancel', style: ResponsiveText.body(context)),
-              ),
-              ElevatedButton(
-                onPressed: () {
-                  setState(() => _energyRate = controller.text);
-                  Navigator.pop(context);
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(
-                      content: Text('Energy rate updated to ₱$_energyRate'),
-                      backgroundColor: AppColor.accentGreen,
-                    ),
-                  );
-                },
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: AppColor.accentGreen,
-                ),
-                child: Text('Save', style: ResponsiveText.body(context)),
-              ),
-            ],
-          ),
-    );
-  }
+    if (currentPassword.isEmpty ||
+        newPassword.isEmpty ||
+        confirmPassword.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Please fill in all fields'),
+          backgroundColor: AppColor.accentRed,
+        ),
+      );
+      return;
+    }
 
-  void _showAlertThresholdDialog(BuildContext context) {
-    showDialog(
-      context: context,
-      builder:
-          (context) => AlertDialog(
-            backgroundColor: Theme.of(context).colorScheme.surface,
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(16),
-            ),
-            title: Text('Alert Threshold', style: ResponsiveText.stat(context)),
-            content: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text(
-                  'Current threshold: ${_alertThreshold.toInt()}%',
-                  style: ResponsiveText.body(context),
-                ),
-                SizedBox(height: Insets.md),
-                Slider(
-                  value: _alertThreshold,
-                  min: 50,
-                  max: 100,
-                  divisions: 10,
-                  label: '${_alertThreshold.toInt()}%',
-                  onChanged: (value) {
-                    setState(() => _alertThreshold = value);
-                  },
-                ),
-              ],
-            ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(context),
-                child: Text('Cancel', style: ResponsiveText.body(context)),
-              ),
-              ElevatedButton(
-                onPressed: () {
-                  Navigator.pop(context);
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(
-                      content: Text(
-                        'Alert threshold set to ${_alertThreshold.toInt()}%',
-                      ),
-                      backgroundColor: AppColor.accentGreen,
-                    ),
-                  );
-                },
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: AppColor.accentGreen,
-                ),
-                child: Text('Save', style: ResponsiveText.body(context)),
-              ),
-            ],
-          ),
-    );
-  }
+    if (newPassword.length < 6) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Password must be at least 6 characters'),
+          backgroundColor: AppColor.accentRed,
+        ),
+      );
+      return;
+    }
 
-  void _showDataExportDialog(BuildContext context) {
-    showDialog(
-      context: context,
-      builder:
-          (context) => AlertDialog(
-            backgroundColor: Theme.of(context).colorScheme.surface,
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(16),
-            ),
-            title: Text('Export Data', style: ResponsiveText.stat(context)),
-            content: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text(
-                  'Choose export format:',
-                  style: ResponsiveText.body(context),
-                ),
-                SizedBox(height: Insets.md),
-                ListTile(
-                  leading: Icon(Iconsax.document, color: AppColor.accentGreen),
-                  title: Text(
-                    'PDF Report',
-                    style: ResponsiveText.body(context),
-                  ),
-                  subtitle: Text('Detailed energy usage report'),
-                  onTap: () {
-                    Navigator.pop(context);
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(
-                        content: Text('PDF export started...'),
-                        backgroundColor: AppColor.accentGreen,
-                      ),
-                    );
-                  },
-                ),
-                ListTile(
-                  leading: Icon(
-                    Iconsax.document_text,
-                    color: AppColor.accentGreen,
-                  ),
-                  title: Text('CSV Data', style: ResponsiveText.body(context)),
-                  subtitle: Text('Raw data for spreadsheet analysis'),
-                  onTap: () {
-                    Navigator.pop(context);
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(
-                        content: Text('CSV export started...'),
-                        backgroundColor: AppColor.accentGreen,
-                      ),
-                    );
-                  },
-                ),
-              ],
-            ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(context),
-                child: Text('Cancel', style: ResponsiveText.body(context)),
-              ),
-            ],
-          ),
-    );
-  }
+    if (newPassword != confirmPassword) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('New passwords do not match'),
+          backgroundColor: AppColor.accentRed,
+        ),
+      );
+      return;
+    }
 
-  void _showDeviceManagementDialog(BuildContext context) {
-    showDialog(
-      context: context,
-      builder:
-          (context) => AlertDialog(
-            backgroundColor: Theme.of(context).colorScheme.surface,
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(16),
-            ),
-            title: Text('Manage Devices', style: ResponsiveText.stat(context)),
-            content: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text(
-                  'Connected IoT Devices:',
-                  style: ResponsiveText.body(context),
-                ),
-                SizedBox(height: Insets.md),
-                ListTile(
-                  leading: Icon(Iconsax.devices, color: AppColor.accentGreen),
-                  title: Text(
-                    'Smart Plug #1',
-                    style: ResponsiveText.body(context),
-                  ),
-                  subtitle: Text('Living Room - Connected'),
-                  trailing: Switch(value: true, onChanged: (value) {}),
-                ),
-                ListTile(
-                  leading: Icon(Iconsax.devices, color: AppColor.accentGreen),
-                  title: Text(
-                    'Energy Monitor',
-                    style: ResponsiveText.body(context),
-                  ),
-                  subtitle: Text('Main Panel - Connected'),
-                  trailing: Switch(value: true, onChanged: (value) {}),
-                ),
-              ],
-            ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(context),
-                child: Text('Close', style: ResponsiveText.body(context)),
-              ),
-              ElevatedButton(
-                onPressed: () {
-                  Navigator.pop(context);
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(
-                      content: Text('Add new device feature coming soon!'),
-                      backgroundColor: AppColor.accentGreen,
-                    ),
-                  );
-                },
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: AppColor.accentGreen,
-                ),
-                child: Text('Add Device', style: ResponsiveText.body(context)),
-              ),
-            ],
-          ),
-    );
-  }
+    Navigator.pop(context);
+    setState(() => _isLoading = true);
 
-  void _showThemeDialog(BuildContext context) {
-    showDialog(
-      context: context,
-      builder:
-          (context) => AlertDialog(
-            backgroundColor: Theme.of(context).colorScheme.surface,
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(16),
-            ),
-            title: Text('Theme Mode', style: ResponsiveText.stat(context)),
-            content: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                RadioListTile<String>(
-                  title: Text(
-                    'Light Mode',
-                    style: ResponsiveText.body(context),
-                  ),
-                  value: 'light',
-                  groupValue: _themeMode,
-                  onChanged: (value) => setState(() => _themeMode = value!),
-                ),
-                RadioListTile<String>(
-                  title: Text('Dark Mode', style: ResponsiveText.body(context)),
-                  value: 'dark',
-                  groupValue: _themeMode,
-                  onChanged: (value) => setState(() => _themeMode = value!),
-                ),
-                RadioListTile<String>(
-                  title: Text(
-                    'System Default',
-                    style: ResponsiveText.body(context),
-                  ),
-                  value: 'system',
-                  groupValue: _themeMode,
-                  onChanged: (value) => setState(() => _themeMode = value!),
-                ),
-              ],
-            ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(context),
-                child: Text('Cancel', style: ResponsiveText.body(context)),
-              ),
-              ElevatedButton(
-                onPressed: () {
-                  Navigator.pop(context);
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(
-                      content: Text(
-                        'Theme updated to ${_getThemeModeText(_themeMode)}',
-                      ),
-                      backgroundColor: AppColor.accentGreen,
-                    ),
-                  );
-                },
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: AppColor.accentGreen,
-                ),
-                child: Text('Apply', style: ResponsiveText.body(context)),
-              ),
-            ],
+    try {
+      await _authService.changePassword(
+        currentPassword: currentPassword,
+        newPassword: newPassword,
+      );
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Password changed successfully!'),
+            backgroundColor: AppColor.accentGreen,
           ),
-    );
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Failed to change password: ${e.toString()}'),
+            backgroundColor: AppColor.accentRed,
+          ),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _isLoading = false);
+      }
+    }
   }
 
   void _showAboutDialog(BuildContext context) {
@@ -881,56 +745,6 @@ class _SettingsPageState extends State<SettingsPage> {
               TextButton(
                 onPressed: () => Navigator.pop(context),
                 child: Text('Close', style: ResponsiveText.body(context)),
-              ),
-            ],
-          ),
-    );
-  }
-
-  void _navigateToSupport() {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text('Help & Support feature coming soon!'),
-        backgroundColor: AppColor.accentGreen,
-      ),
-    );
-  }
-
-  void _showLogoutDialog(BuildContext context) {
-    showDialog(
-      context: context,
-      builder:
-          (context) => AlertDialog(
-            backgroundColor: Theme.of(context).colorScheme.surface,
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(16),
-            ),
-            title: Text('Logout', style: ResponsiveText.stat(context)),
-            content: Text(
-              'Are you sure you want to logout?',
-              style: ResponsiveText.body(context),
-            ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(context),
-                child: Text('Cancel', style: ResponsiveText.body(context)),
-              ),
-              ElevatedButton(
-                onPressed: () {
-                  Navigator.pop(context);
-                  // TODO: Implement actual logout logic
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(
-                      content: Text('Logout successful!'),
-                      backgroundColor: AppColor.accentGreen,
-                    ),
-                  );
-                },
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: AppColor.accentRed,
-                  foregroundColor: Colors.white,
-                ),
-                child: Text('Logout', style: ResponsiveText.body(context)),
               ),
             ],
           ),

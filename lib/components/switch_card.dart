@@ -61,12 +61,22 @@ class _SwitchCardState extends State<SwitchCard> {
 
   void _startTimer() {
     _timer?.cancel();
+    String? lastText;
     _timer = Timer.periodic(const Duration(seconds: 1), (_) {
-      if (_onStart != null && widget.isOn) {
+      if (_onStart != null && widget.isOn && mounted) {
         final diff = DateTime.now().difference(_onStart!);
-        setState(() {
-          _timerText = _formatDuration(diff);
-        });
+        final newText = _formatDuration(diff);
+        // Only update if text actually changed to avoid unnecessary rebuilds
+        if (newText != lastText) {
+          lastText = newText;
+          if (mounted) {
+            setState(() {
+              _timerText = newText;
+            });
+          }
+        }
+      } else if (!widget.isOn) {
+        _timer?.cancel();
       }
     });
   }

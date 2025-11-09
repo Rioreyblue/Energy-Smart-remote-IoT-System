@@ -3,6 +3,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_database/firebase_database.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:exercise_app/models/goals_model.dart';
+import '../utils/app_logger.dart';
 
 /// Service class for managing energy goals and meter readings
 /// Handles both Firestore and Realtime Database operations
@@ -242,7 +243,7 @@ class GoalsService {
     }
   }
 
-  /// Save user type to Firestore
+  /// Save user type to both Firestore and Realtime Database
   Future<ServiceResult<bool>> saveUserType(String userType) async {
     try {
       if (!_isAuthenticated) {
@@ -254,11 +255,30 @@ class GoalsService {
       // Update local state
       _userType = userType;
 
-      // Save to Firestore
-      await _firestore.collection(_usersCollection).doc(userId).update({
+      // Save to Firestore (use set with merge to create or update)
+      await _firestore.collection(_usersCollection).doc(userId).set({
         'userType': userType,
         'updatedAt': FieldValue.serverTimestamp(),
-      });
+      }, SetOptions(merge: true));
+
+      // Also save to Realtime Database
+      try {
+        await _database.ref('users/$userId').update({
+          'userType': userType,
+          'updatedAt': DateTime.now().millisecondsSinceEpoch,
+        });
+        AppLogger.i('[GoalsService] ✅ [GoalsService] User type saved to Realtime Database');
+      } catch (e) {
+        print(
+          '⚠️ [GoalsService] Realtime Database update failed, trying set: $e',
+        );
+        // Fallback to set if update fails
+        await _database.ref('users/$userId').set({
+          'userType': userType,
+          'updatedAt': DateTime.now().millisecondsSinceEpoch,
+        });
+        AppLogger.i('[GoalsService] ✅ [GoalsService] User type saved to Realtime Database via set');
+      }
 
       return ServiceResult.success(true);
     } on FirebaseException catch (e) {
@@ -269,7 +289,7 @@ class GoalsService {
     }
   }
 
-  /// Get user type from Firestore
+  /// Get user type from Realtime Database (with Firestore fallback)
   Future<ServiceResult<String?>> getUserType() async {
     try {
       if (!_isAuthenticated) {
@@ -278,6 +298,19 @@ class GoalsService {
 
       final userId = _currentUserId!;
 
+      // Try Realtime Database first
+      try {
+        final snapshot = await _database.ref('users/$userId/userType').get();
+        if (snapshot.exists && snapshot.value != null) {
+          final userType = snapshot.value as String;
+          _userType = userType;
+          return ServiceResult.success(userType);
+        }
+      } catch (e) {
+        AppLogger.i('[GoalsService] Realtime Database read failed, trying Firestore: $e');
+      }
+
+      // Fallback to Firestore
       final doc =
           await _firestore.collection(_usersCollection).doc(userId).get();
 

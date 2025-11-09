@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:exercise_app/constants/constant.dart';
 
 enum SnackbarType { success, error, info, warning }
 
@@ -211,7 +210,7 @@ class AppSnackbar {
         return _SnackbarConfig(
           icon: Icons.info_outline,
           title: 'Info',
-          backgroundColor: scheme.surfaceVariant,
+          backgroundColor: scheme.surfaceContainerHighest,
           iconColor: scheme.primary,
           iconBackgroundColor: scheme.primary.withAlpha(26),
           titleColor: scheme.onSurface,

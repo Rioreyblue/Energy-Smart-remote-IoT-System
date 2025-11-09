@@ -59,30 +59,39 @@ class DefaultFirebaseOptions {
     appId: '1:281073543283:android:4afab462085088b265e206',
     messagingSenderId: '281073543283',
     projectId: 'capstonefinal593',
+    authDomain: 'capstonefinal593.firebaseapp.com',
+    storageBucket: 'capstonefinal593.firebasestorage.app',
     databaseURL:
         'https://capstonefinal593-default-rtdb.asia-southeast1.firebasedatabase.app',
-    storageBucket: 'capstonefinal593.firebasestorage.app',
   );
 
   static const FirebaseOptions ios = FirebaseOptions(
-    apiKey: 'AIzaSyA6W02Sm2ShrmNtmDTe9sOV1dQD3hGSf4M',
-    appId: '1:281073543283:ios:4afab462085088b265e206',
+    apiKey: 'AIzaSyBq5kh0SZpeenkwtCP6ipzlHKk48LSDuuo',
+    appId: '1:281073543283:ios:cdfbb697ac9eaa2f65e206',
     messagingSenderId: '281073543283',
     projectId: 'capstonefinal593',
-    storageBucket: 'capstonefinal593.firebasestorage.app',
-    iosBundleId: 'com.example.exerciseApp',
     databaseURL:
         'https://capstonefinal593-default-rtdb.asia-southeast1.firebasedatabase.app',
+    storageBucket: 'capstonefinal593.firebasestorage.app',
+    androidClientId:
+        '281073543283-ornnrv80rq9u2as3ad552pon8dfprpsr.apps.googleusercontent.com',
+    iosClientId:
+        '281073543283-ekc52o4nhu39mf089a4anr8raue7ulji.apps.googleusercontent.com',
+    iosBundleId: 'com.example.exerciseApp',
   );
 
   static const FirebaseOptions macos = FirebaseOptions(
-    apiKey: 'AIzaSyA6W02Sm2ShrmNtmDTe9sOV1dQD3hGSf4M',
-    appId: '1:281073543283:ios:4afab462085088b265e206',
+    apiKey: 'AIzaSyBq5kh0SZpeenkwtCP6ipzlHKk48LSDuuo',
+    appId: '1:281073543283:ios:cdfbb697ac9eaa2f65e206',
     messagingSenderId: '281073543283',
     projectId: 'capstonefinal593',
-    storageBucket: 'capstonefinal593.firebasestorage.app',
-    iosBundleId: 'com.example.exerciseApp',
     databaseURL:
         'https://capstonefinal593-default-rtdb.asia-southeast1.firebasedatabase.app',
+    storageBucket: 'capstonefinal593.firebasestorage.app',
+    androidClientId:
+        '281073543283-ornnrv80rq9u2as3ad552pon8dfprpsr.apps.googleusercontent.com',
+    iosClientId:
+        '281073543283-ekc52o4nhu39mf089a4anr8raue7ulji.apps.googleusercontent.com',
+    iosBundleId: 'com.example.exerciseApp',
   );
 }

@@ -1,10 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
+import 'package:provider/provider.dart';
 import '../constants/constant.dart';
 import 'package:iconsax/iconsax.dart';
 import 'theme_switch_button.dart';
 import '../services/auth_service.dart';
 import '../widgets/app_snackbar.dart';
+import '../controllers/chat_notification_controller.dart';
+import '../services/chat_service.dart';
 
 class AppDrawer extends StatelessWidget {
   const AppDrawer({super.key});
@@ -17,7 +20,6 @@ class AppDrawer extends StatelessWidget {
         isDark ? AppColor.textPrimaryDark : AppColor.textPrimary;
     final textSecondary =
         isDark ? AppColor.textSecondaryDark : AppColor.textSecondary;
-    final surface = isDark ? AppColor.surfaceDark : AppColor.surface;
     return Drawer(
       child: Column(
         children: [
@@ -32,38 +34,6 @@ class AppDrawer extends StatelessWidget {
             child: ListView(
               padding: EdgeInsets.zero,
               children: [
-                _buildSectionHeader(context, 'Data & Reports', primaryColor),
-                _buildDrawerItem(
-                  context,
-                  icon: Iconsax.archive,
-                  title: 'Data Management',
-                  subtitle: 'Manage your usage data',
-                  route: '/dataManagement',
-                  iconColor: primaryColor,
-                  textColor: textPrimary,
-                  subtitleColor: textSecondary,
-                ),
-                _buildDrawerItem(
-                  context,
-                  icon: Iconsax.receipt,
-                  title: 'Bill History',
-                  subtitle: 'View past bills & payments',
-                  route: '/billHistory',
-                  iconColor: primaryColor,
-                  textColor: textPrimary,
-                  subtitleColor: textSecondary,
-                ),
-                _buildDrawerItem(
-                  context,
-                  icon: Iconsax.export_1,
-                  title: 'Export Usage Data',
-                  subtitle: 'Download your data',
-                  route: '/exportUsageData',
-                  iconColor: primaryColor,
-                  textColor: textPrimary,
-                  subtitleColor: textSecondary,
-                ),
-                const SizedBox(height: Insets.lg),
                 _buildSectionHeader(context, 'Help & Support', primaryColor),
                 _buildDrawerItem(
                   context,
@@ -71,7 +41,7 @@ class AppDrawer extends StatelessWidget {
                   title: 'Tips & Advice',
                   subtitle: 'Energy saving tips',
                   route: '/tipsAdvice',
-                  iconColor: primaryColor,
+                  iconColor: AppColor.accentGreen,
                   textColor: textPrimary,
                   subtitleColor: textSecondary,
                 ),
@@ -81,17 +51,13 @@ class AppDrawer extends StatelessWidget {
                   title: 'FAQ / Help Center',
                   subtitle: 'Find answers quickly',
                   route: '/faqHelpCenter',
-                  iconColor: primaryColor,
+                  iconColor: AppColor.accentGreen,
                   textColor: textPrimary,
                   subtitleColor: textSecondary,
                 ),
-                _buildDrawerItem(
+                _buildSupportChatItem(
                   context,
-                  icon: Iconsax.message_question,
-                  title: 'Feedback',
-                  subtitle: 'Share your thoughts',
-                  route: '/feedback',
-                  iconColor: primaryColor,
+                  iconColor: AppColor.accentGreen,
                   textColor: textPrimary,
                   subtitleColor: textSecondary,
                 ),
@@ -101,7 +67,7 @@ class AppDrawer extends StatelessWidget {
                   title: 'Contact Admin',
                   subtitle: 'Get direct support',
                   route: '/contactAdmin',
-                  iconColor: primaryColor,
+                  iconColor: AppColor.accentGreen,
                   textColor: textPrimary,
                   subtitleColor: textSecondary,
                 ),
@@ -183,7 +149,6 @@ class AppDrawer extends StatelessWidget {
     String title,
     Color primaryColor,
   ) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
     return Padding(
       padding: const EdgeInsets.fromLTRB(
         Insets.lg,
@@ -282,6 +247,162 @@ class AppDrawer extends StatelessWidget {
     );
   }
 
+  /// Build Support Chat item with unread badge
+  Widget _buildSupportChatItem(
+    BuildContext context, {
+    required Color iconColor,
+    required Color textColor,
+    required Color subtitleColor,
+  }) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    return Container(
+      margin: const EdgeInsets.symmetric(horizontal: Insets.sm, vertical: 2),
+      child: Material(
+        color: Colors.transparent,
+        borderRadius: BorderRadius.circular(Insets.md),
+        child: InkWell(
+          borderRadius: BorderRadius.circular(Insets.md),
+          onTap: () {
+            Navigator.pop(context);
+            context.go('/supportChat');
+            // Mark as read when opened
+            final chatNotificationController =
+                Provider.of<ChatNotificationController>(context, listen: false);
+            final chatService = Provider.of<ChatService>(
+              context,
+              listen: false,
+            );
+            if (chatService.currentChatId != null) {
+              chatNotificationController.markAsRead(chatService.currentChatId!);
+            }
+          },
+          child: Padding(
+            padding: const EdgeInsets.symmetric(
+              horizontal: Insets.lg,
+              vertical: Insets.md,
+            ),
+            child: Consumer<ChatNotificationController>(
+              builder: (context, chatController, child) {
+                final unreadCount = chatController.unreadCount;
+                return Row(
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(Insets.xm),
+                      decoration: BoxDecoration(
+                        color: iconColor.withAlpha(26), // 0.1 * 255 = 26
+                        borderRadius: BorderRadius.circular(Insets.sm),
+                      ),
+                      child: Stack(
+                        clipBehavior: Clip.none,
+                        children: [
+                          Icon(
+                            Iconsax.message_text_1,
+                            color: iconColor,
+                            size: 20,
+                          ),
+                          if (unreadCount > 0)
+                            Positioned(
+                              right: -4,
+                              top: -4,
+                              child: Container(
+                                padding: const EdgeInsets.all(2),
+                                decoration: BoxDecoration(
+                                  color: AppColor.accentRed,
+                                  shape: BoxShape.circle,
+                                ),
+                                constraints: const BoxConstraints(
+                                  minWidth: 12,
+                                  minHeight: 12,
+                                ),
+                                child: Text(
+                                  unreadCount > 99 ? '99+' : '$unreadCount',
+                                  style: const TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 8,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                  textAlign: TextAlign.center,
+                                ),
+                              ),
+                            ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(width: Insets.md),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            children: [
+                              Expanded(
+                                child: Text(
+                                  'Support Chat',
+                                  style: Theme.of(
+                                    context,
+                                  ).textTheme.bodyLarge?.copyWith(
+                                    fontWeight: FontWeight.w500,
+                                    fontSize: 16,
+                                    color: textColor,
+                                  ),
+                                ),
+                              ),
+                              if (unreadCount > 0)
+                                Container(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 6,
+                                    vertical: 2,
+                                  ),
+                                  decoration: BoxDecoration(
+                                    color: AppColor.accentRed,
+                                    borderRadius: BorderRadius.circular(10),
+                                  ),
+                                  child: Text(
+                                    unreadCount > 99 ? '99+' : '$unreadCount',
+                                    style: const TextStyle(
+                                      color: Colors.white,
+                                      fontSize: 10,
+                                      fontWeight: FontWeight.bold,
+                                    ),
+                                  ),
+                                ),
+                            ],
+                          ),
+                          const SizedBox(height: 2),
+                          Text(
+                            unreadCount > 0
+                                ? '$unreadCount unread message${unreadCount > 1 ? 's' : ''}'
+                                : 'Get instant help from our team',
+                            style: Theme.of(
+                              context,
+                            ).textTheme.bodySmall?.copyWith(
+                              color: subtitleColor.withAlpha(
+                                178,
+                              ), // 0.7 * 255 = 178
+                              fontSize: 12,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    Icon(
+                      Iconsax.arrow_right_3,
+                      color:
+                          isDark
+                              ? AppColor.disabled.withAlpha(178)
+                              : AppColor.primary.withAlpha(178),
+                      size: 16,
+                    ),
+                  ],
+                );
+              },
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
   Widget _buildLogoutItem(
     BuildContext context, {
     required IconData icon,
@@ -367,7 +488,8 @@ class AppDrawer extends StatelessWidget {
 
       if (context.mounted) {
         AppSnackbar.showSuccess(context, 'Successfully signed out');
-        // Navigation will be handled by the auth wrapper
+        // Navigate to root - AuthWrapper will handle showing login page
+        context.go('/');
       }
     } catch (e) {
       if (context.mounted) {

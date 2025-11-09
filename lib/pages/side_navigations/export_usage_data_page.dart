@@ -4,6 +4,9 @@ import 'package:exercise_app/constants/constant.dart';
 import 'package:exercise_app/services/export_service.dart';
 import 'package:exercise_app/services/goals_service.dart';
 import 'package:exercise_app/models/goals_model.dart';
+import 'package:exercise_app/utils/permission_helper.dart';
+import 'package:open_filex/open_filex.dart';
+import 'package:go_router/go_router.dart';
 
 class ExportUsageDataPage extends StatefulWidget {
   const ExportUsageDataPage({super.key});
@@ -69,6 +72,29 @@ class _ExportUsageDataPageState extends State<ExportUsageDataPage> {
       return;
     }
 
+    // Check and request permissions
+    final hasPermission = await PermissionHelper.isStoragePermissionGranted();
+    if (!hasPermission) {
+      final granted = await PermissionHelper.showPermissionRationale(context);
+      if (!granted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              'Storage permission is required to export files. Please grant permission in app settings.',
+            ),
+            backgroundColor: AppColor.accentRed,
+            duration: const Duration(seconds: 4),
+            action: SnackBarAction(
+              label: 'Settings',
+              textColor: Colors.white,
+              onPressed: () => PermissionHelper.openAppSettingsPage(),
+            ),
+          ),
+        );
+        return;
+      }
+    }
+
     setState(() => _isExporting = true);
 
     try {
@@ -79,7 +105,7 @@ class _ExportUsageDataPageState extends State<ExportUsageDataPage> {
         fileName: fileName,
       );
 
-      if (result.success) {
+      if (result.success && result.filePath != null) {
         _showExportSuccessDialog(result.filePath!);
       } else {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -102,6 +128,15 @@ class _ExportUsageDataPageState extends State<ExportUsageDataPage> {
   }
 
   void _showExportSuccessDialog(String filePath) {
+    // Extract Downloads folder path for display
+    String displayPath = filePath;
+    if (filePath.contains('/Download/')) {
+      displayPath = 'Download/${filePath.split('/Download/').last}';
+    } else if (filePath.contains('Download')) {
+      displayPath =
+          'Download/${filePath.split('Download').last.replaceFirst('/', '')}';
+    }
+
     showDialog(
       context: context,
       builder:
@@ -118,7 +153,12 @@ class _ExportUsageDataPageState extends State<ExportUsageDataPage> {
                   size: 24,
                 ),
                 SizedBox(width: Insets.sm),
-                Text('Export Successful', style: ResponsiveText.stat(context)),
+                Expanded(
+                  child: Text(
+                    'Export Successful',
+                    style: ResponsiveText.stat(context),
+                  ),
+                ),
               ],
             ),
             content: Column(
@@ -133,17 +173,29 @@ class _ExportUsageDataPageState extends State<ExportUsageDataPage> {
                 Text('File saved to:', style: ResponsiveText.label(context)),
                 SizedBox(height: Insets.sm),
                 Container(
-                  padding: EdgeInsets.all(Insets.sm),
+                  padding: EdgeInsets.all(Insets.md),
                   decoration: BoxDecoration(
                     color: AppColor.surface,
                     borderRadius: BorderRadius.circular(8),
                     border: Border.all(color: AppColor.disabled),
                   ),
-                  child: Text(
-                    filePath,
-                    style: ResponsiveText.caption(context),
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
+                  child: Row(
+                    children: [
+                      Icon(
+                        Iconsax.folder,
+                        size: 16,
+                        color: AppColor.accentGreen,
+                      ),
+                      SizedBox(width: Insets.sm),
+                      Expanded(
+                        child: Text(
+                          displayPath,
+                          style: ResponsiveText.caption(context),
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                    ],
                   ),
                 ),
               ],
@@ -152,6 +204,37 @@ class _ExportUsageDataPageState extends State<ExportUsageDataPage> {
               TextButton(
                 onPressed: () => Navigator.pop(context),
                 child: Text('Close', style: ResponsiveText.body(context)),
+              ),
+              ElevatedButton.icon(
+                onPressed: () async {
+                  Navigator.pop(context);
+                  try {
+                    final result = await OpenFilex.open(filePath);
+                    if (result.type != ResultType.done) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(
+                          content: Text(
+                            'Could not open file: ${result.message}',
+                          ),
+                          backgroundColor: AppColor.accentRed,
+                        ),
+                      );
+                    }
+                  } catch (e) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(
+                        content: Text('Error opening file: $e'),
+                        backgroundColor: AppColor.accentRed,
+                      ),
+                    );
+                  }
+                },
+                icon: Icon(Iconsax.export_1, size: 16),
+                label: Text('Open File'),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: AppColor.accentGreen,
+                  foregroundColor: Colors.white,
+                ),
               ),
             ],
           ),
@@ -167,6 +250,11 @@ class _ExportUsageDataPageState extends State<ExportUsageDataPage> {
         backgroundColor: AppColor.accentGreen,
         elevation: 0,
         foregroundColor: Colors.white,
+        leading: IconButton(
+          icon: const Icon(Iconsax.arrow_left_1),
+          onPressed: () => context.go('/home'),
+          color: Colors.white,
+        ),
       ),
       body:
           _isLoading

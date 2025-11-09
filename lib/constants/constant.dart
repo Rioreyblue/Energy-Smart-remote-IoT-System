@@ -138,4 +138,10 @@ class ResponsiveText {
     color: Theme.of(context).textTheme.bodyLarge?.color,
     fontWeight: FontWeight.w600,
   );
+
+  static TextStyle small(BuildContext context) => TextStyle(
+    fontSize: 11 * _scale(context),
+    color: Theme.of(context).textTheme.bodyMedium?.color,
+    fontWeight: FontWeight.w500,
+  );
 }
