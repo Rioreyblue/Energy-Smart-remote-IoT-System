@@ -33,31 +33,36 @@ class _MonitoringStatusOverviewState extends State<MonitoringStatusOverview> {
         }
 
         final appliances = snapshot.data!;
+        final theme = Theme.of(context);
+        final isDark = theme.brightness == Brightness.dark;
+        final Color mutedColor = theme.colorScheme.onSurface.withAlpha(
+          (isDark ? 150 : 170),
+        );
         final activeAppliances = appliances.where((a) => a.isOn).toList();
 
         if (activeAppliances.isEmpty) {
           return Container(
             padding: EdgeInsets.all(Insets.md),
             decoration: BoxDecoration(
-              color: Theme.of(context).colorScheme.surface,
+              color: theme.colorScheme.surfaceContainerHigh,
               borderRadius: BorderRadius.circular(16),
               boxShadow: [
                 BoxShadow(
-                  color: Colors.black.withAlpha((0.05 * 255).toInt()),
+                  color: theme.shadowColor.withAlpha(isDark ? 80 : 30),
                   blurRadius: 8,
-                  offset: Offset(0, 2),
+                  offset: const Offset(0, 2),
                 ),
               ],
             ),
             child: Row(
               children: [
-                Icon(Iconsax.warning_2, color: AppColor.disabled, size: 20),
+                Icon(Iconsax.warning_2, color: mutedColor, size: 20),
                 SizedBox(width: Insets.sm),
                 Text(
                   'No active appliances',
                   style: ResponsiveText.body(
                     context,
-                  ).copyWith(color: AppColor.disabled),
+                  ).copyWith(color: mutedColor),
                 ),
               ],
             ),
@@ -68,6 +73,13 @@ class _MonitoringStatusOverviewState extends State<MonitoringStatusOverview> {
         final totalCurrent = _calculateTotalCurrent(activeAppliances);
         final totalWatts = _calculateTotalWatts(activeAppliances);
 
+        final Color voltageColor =
+            isDark ? theme.colorScheme.tertiary : AppColor.accentGreen;
+        final Color currentColor =
+            isDark ? theme.colorScheme.secondary : AppColor.mediumConsumption;
+        final Color wattsColor =
+            isDark ? theme.colorScheme.primary : AppColor.primary;
+
         return Row(
           children: [
             Expanded(
@@ -76,7 +88,7 @@ class _MonitoringStatusOverviewState extends State<MonitoringStatusOverview> {
                 title: 'Voltage',
                 value: avgVoltage.toStringAsFixed(1),
                 subtitle: 'V',
-                color: AppColor.accentGreen,
+                color: voltageColor,
               ),
             ),
             SizedBox(width: Insets.md),
@@ -86,7 +98,7 @@ class _MonitoringStatusOverviewState extends State<MonitoringStatusOverview> {
                 title: 'Current',
                 value: totalCurrent.toStringAsFixed(2),
                 subtitle: 'A',
-                color: AppColor.mediumConsumption,
+                color: currentColor,
               ),
             ),
             SizedBox(width: Insets.md),
@@ -96,7 +108,7 @@ class _MonitoringStatusOverviewState extends State<MonitoringStatusOverview> {
                 title: 'Watts',
                 value: totalWatts.toStringAsFixed(0),
                 subtitle: 'W',
-                color: AppColor.primary,
+                color: wattsColor,
               ),
             ),
           ],
@@ -154,28 +166,47 @@ class _StatusCard extends StatelessWidget {
   });
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+    final Color shadowColor = theme.shadowColor.withAlpha(isDark ? 90 : 40);
+    final Color surfaceColor = theme.colorScheme.surface;
+    final Color titleColor = theme.colorScheme.onSurface.withAlpha(210);
+    final Color valueColor = theme.colorScheme.onSurface;
+    final Color subtitleColor = theme.colorScheme.onSurfaceVariant.withAlpha(
+      200,
+    );
+    final Color iconColor =
+        isDark ? color.withAlpha((0.85 * 255).toInt()) : color;
+
     return Container(
       padding: EdgeInsets.all(Insets.md),
       decoration: BoxDecoration(
-        color: Theme.of(context).colorScheme.surface,
+        color: surfaceColor,
         borderRadius: BorderRadius.circular(16),
         boxShadow: [
-          BoxShadow(
-            color: Colors.black.withAlpha((0.05 * 255).toInt()),
-            blurRadius: 8,
-            offset: Offset(0, 2),
-          ),
+          BoxShadow(color: shadowColor, blurRadius: 8, offset: Offset(0, 2)),
         ],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Icon(icon, color: color, size: 20),
+          Icon(icon, color: iconColor, size: 20),
           SizedBox(height: Insets.sm),
-          Text(title, style: ResponsiveText.label(context)),
+          Text(
+            title,
+            style: ResponsiveText.label(context).copyWith(color: titleColor),
+          ),
           SizedBox(height: 2),
-          Text(value, style: ResponsiveText.stat(context)),
-          Text(subtitle, style: ResponsiveText.caption(context)),
+          Text(
+            value,
+            style: ResponsiveText.stat(context).copyWith(color: valueColor),
+          ),
+          Text(
+            subtitle,
+            style: ResponsiveText.caption(
+              context,
+            ).copyWith(color: subtitleColor),
+          ),
         ],
       ),
     );

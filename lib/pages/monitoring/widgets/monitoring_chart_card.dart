@@ -37,35 +37,35 @@ class _MonitoringChartCardState extends State<MonitoringChartCard> {
       case 'Day':
         return _ChartCard(
           title: "Today's Usage",
-          child: _buildDailyChart(context),
           onMetricChanged: (metric) {
             setState(() {
               _selectedMetric = metric;
             });
           },
           selectedMetric: _selectedMetric,
+          child: _buildDailyChart(context),
         );
       case 'Week':
         return _ChartCard(
           title: 'Weekly Usage Trend',
-          child: _buildWeeklyChart(context),
           onMetricChanged: (metric) {
             setState(() {
               _selectedMetric = metric;
             });
           },
           selectedMetric: _selectedMetric,
+          child: _buildWeeklyChart(context),
         );
       case 'Month':
         return _ChartCard(
           title: 'Monthly Consumption',
-          child: _buildMonthlyChart(context),
           onMetricChanged: (metric) {
             setState(() {
               _selectedMetric = metric;
             });
           },
           selectedMetric: _selectedMetric,
+          child: _buildMonthlyChart(context),
         );
       default:
         return SizedBox.shrink();
@@ -102,6 +102,17 @@ class _MonitoringChartCardState extends State<MonitoringChartCard> {
         final useCost = _selectedMetric == ChartMetric.cost;
         final maxY = _calculateMaxValue(data, useCost: useCost) * 1.2;
 
+        final theme = Theme.of(context);
+        final bool isDark = theme.brightness == Brightness.dark;
+        final Color primaryColor = theme.colorScheme.primary;
+        final Color surfaceColor = theme.colorScheme.surface;
+        final Color tooltipTextColor = theme.colorScheme.onPrimary;
+        final Color horizontalLineColor = theme.colorScheme.outlineVariant
+            .withAlpha(isDark ? 110 : 90);
+        final Color tooltipBackgroundColor = primaryColor.withAlpha(
+          (0.9 * 255).toInt(),
+        );
+
         return SizedBox(
           height: 200,
           child: LineChart(
@@ -112,10 +123,8 @@ class _MonitoringChartCardState extends State<MonitoringChartCard> {
                 show: true,
                 horizontalInterval: maxY / 5,
                 getDrawingHorizontalLine:
-                    (value) => FlLine(
-                      color: AppColor.disabled.withAlpha((0.2 * 255).toInt()),
-                      strokeWidth: 1,
-                    ),
+                    (value) =>
+                        FlLine(color: horizontalLineColor, strokeWidth: 1),
               ),
               titlesData: FlTitlesData(
                 bottomTitles: AxisTitles(
@@ -179,20 +188,20 @@ class _MonitoringChartCardState extends State<MonitoringChartCard> {
                 LineChartBarData(
                   spots: spots,
                   isCurved: true,
-                  color: AppColor.primary,
+                  color: primaryColor,
                   barWidth: 3,
                   belowBarData: BarAreaData(
                     show: true,
-                    color: AppColor.primary.withAlpha((0.1 * 255).toInt()),
+                    color: primaryColor.withAlpha((0.12 * 255).toInt()),
                   ),
                   dotData: FlDotData(
                     show: true,
                     getDotPainter: (spot, percent, barData, index) {
                       return FlDotCirclePainter(
                         radius: 4,
-                        color: AppColor.background,
+                        color: surfaceColor,
                         strokeWidth: 2,
-                        strokeColor: AppColor.primary,
+                        strokeColor: primaryColor,
                       );
                     },
                   ),
@@ -201,7 +210,7 @@ class _MonitoringChartCardState extends State<MonitoringChartCard> {
               lineTouchData: LineTouchData(
                 enabled: true,
                 touchTooltipData: LineTouchTooltipData(
-                  getTooltipColor: (spots) => AppColor.primary.withAlpha(230),
+                  getTooltipColor: (spots) => tooltipBackgroundColor,
                   getTooltipItems:
                       (touchedSpots) =>
                           touchedSpots.map((spot) {
@@ -212,7 +221,7 @@ class _MonitoringChartCardState extends State<MonitoringChartCard> {
                               '${kwh.toStringAsFixed(2)} kWh\n₱${cost.toStringAsFixed(2)}',
                               ResponsiveText.body(
                                 context,
-                              ).copyWith(color: Colors.white),
+                              ).copyWith(color: tooltipTextColor),
                             );
                           }).toList(),
                 ),
@@ -258,6 +267,17 @@ class _MonitoringChartCardState extends State<MonitoringChartCard> {
         final useCost = _selectedMetric == ChartMetric.cost;
         final maxY = _calculateMaxValue(data, useCost: useCost) * 1.2;
 
+        final theme = Theme.of(context);
+        final bool isDark = theme.brightness == Brightness.dark;
+        final Color primaryColor = theme.colorScheme.primary;
+        final Color surfaceColor = theme.colorScheme.surface;
+        final Color tooltipTextColor = theme.colorScheme.onPrimary;
+        final Color horizontalLineColor = theme.colorScheme.outlineVariant
+            .withAlpha(isDark ? 110 : 90);
+        final Color tooltipBackgroundColor = primaryColor.withAlpha(
+          (0.9 * 255).toInt(),
+        );
+
         return SizedBox(
           height: 200,
           child: LineChart(
@@ -268,10 +288,8 @@ class _MonitoringChartCardState extends State<MonitoringChartCard> {
                 show: true,
                 horizontalInterval: maxY / 5,
                 getDrawingHorizontalLine:
-                    (value) => FlLine(
-                      color: AppColor.disabled.withAlpha((0.2 * 255).toInt()),
-                      strokeWidth: 1,
-                    ),
+                    (value) =>
+                        FlLine(color: horizontalLineColor, strokeWidth: 1),
               ),
               titlesData: FlTitlesData(
                 bottomTitles: AxisTitles(
@@ -325,20 +343,20 @@ class _MonitoringChartCardState extends State<MonitoringChartCard> {
                 LineChartBarData(
                   spots: spots,
                   isCurved: true,
-                  color: AppColor.primary,
+                  color: primaryColor,
                   barWidth: 3,
                   belowBarData: BarAreaData(
                     show: true,
-                    color: AppColor.primary.withAlpha((0.1 * 255).toInt()),
+                    color: primaryColor.withAlpha((0.12 * 255).toInt()),
                   ),
                   dotData: FlDotData(
                     show: true,
                     getDotPainter: (spot, percent, barData, index) {
                       return FlDotCirclePainter(
                         radius: 4,
-                        color: AppColor.background,
+                        color: surfaceColor,
                         strokeWidth: 2,
-                        strokeColor: AppColor.primary,
+                        strokeColor: primaryColor,
                       );
                     },
                   ),
@@ -347,7 +365,7 @@ class _MonitoringChartCardState extends State<MonitoringChartCard> {
               lineTouchData: LineTouchData(
                 enabled: true,
                 touchTooltipData: LineTouchTooltipData(
-                  getTooltipColor: (spots) => AppColor.primary.withAlpha(230),
+                  getTooltipColor: (spots) => tooltipBackgroundColor,
                   getTooltipItems:
                       (touchedSpots) =>
                           touchedSpots.map((spot) {
@@ -358,7 +376,7 @@ class _MonitoringChartCardState extends State<MonitoringChartCard> {
                               '${kwh.toStringAsFixed(2)} kWh\n₱${cost.toStringAsFixed(2)}',
                               ResponsiveText.body(
                                 context,
-                              ).copyWith(color: Colors.white),
+                              ).copyWith(color: tooltipTextColor),
                             );
                           }).toList(),
                 ),
@@ -398,6 +416,15 @@ class _MonitoringChartCardState extends State<MonitoringChartCard> {
         final data = snapshot.data!;
         final useCost = _selectedMetric == ChartMetric.cost;
         final maxY = _calculateMaxValue(data, useCost: useCost) * 1.2;
+
+        final theme = Theme.of(context);
+        final bool isDark = theme.brightness == Brightness.dark;
+        final Color primaryColor = theme.colorScheme.primary;
+        final Color secondaryColor = theme.colorScheme.secondary;
+        final Color tertiaryColor = theme.colorScheme.tertiary;
+        final Color backgroundRodColor = theme.colorScheme.outlineVariant
+            .withAlpha(isDark ? 80 : 60);
+        final Color tooltipTextColor = theme.colorScheme.onPrimary;
 
         return SizedBox(
           height: 200,
@@ -485,14 +512,14 @@ class _MonitoringChartCardState extends State<MonitoringChartCard> {
                     BarChartRodData(
                       toY: value,
                       width: 20,
-                      color: isCurrentMonth ? null : _getConsumptionColor(kwh),
+                      color:
+                          isCurrentMonth
+                              ? null
+                              : _resolveConsumptionColor(context, kwh),
                       gradient:
                           isCurrentMonth
                               ? LinearGradient(
-                                colors: [
-                                  AppColor.accentGreen,
-                                  AppColor.lowConsumption,
-                                ],
+                                colors: [secondaryColor, tertiaryColor],
                               )
                               : null,
                       borderRadius: const BorderRadius.vertical(
@@ -501,7 +528,7 @@ class _MonitoringChartCardState extends State<MonitoringChartCard> {
                       backDrawRodData: BackgroundBarChartRodData(
                         show: true,
                         toY: maxY,
-                        color: AppColor.disabled.withAlpha((0.1 * 255).toInt()),
+                        color: backgroundRodColor,
                       ),
                     ),
                   ],
@@ -510,7 +537,8 @@ class _MonitoringChartCardState extends State<MonitoringChartCard> {
               barTouchData: BarTouchData(
                 enabled: true,
                 touchTooltipData: BarTouchTooltipData(
-                  getTooltipColor: (group) => AppColor.primary.withAlpha(230),
+                  getTooltipColor:
+                      (group) => primaryColor.withAlpha((0.9 * 255).toInt()),
                   getTooltipItem: (group, groupIndex, rod, rodIndex) {
                     final idx = group.x.toInt();
                     final kwh = (data[idx]['totalKwh'] ?? 0.0).toDouble();
@@ -519,7 +547,7 @@ class _MonitoringChartCardState extends State<MonitoringChartCard> {
                       '${kwh.toStringAsFixed(2)} kWh\n₱${cost.toStringAsFixed(2)}',
                       ResponsiveText.body(
                         context,
-                      ).copyWith(color: Colors.white),
+                      ).copyWith(color: tooltipTextColor),
                     );
                   },
                 ),
@@ -891,28 +919,44 @@ class _MonitoringChartCardState extends State<MonitoringChartCard> {
     return AppColor.highConsumption;
   }
 
+  Color _resolveConsumptionColor(BuildContext context, double value) {
+    final theme = Theme.of(context);
+    final bool isDark = theme.brightness == Brightness.dark;
+    final base = _getConsumptionColor(value);
+    return isDark ? base.withAlpha((0.85 * 255).toInt()) : base;
+  }
+
   Widget _buildEmptyChart([String? message]) {
+    final theme = Theme.of(context);
+    final bool isDark = theme.brightness == Brightness.dark;
+    final Color iconColor = theme.colorScheme.outline;
+    final Color primaryTextColor = theme.colorScheme.onSurface.withAlpha(
+      isDark ? 190 : 210,
+    );
+    final Color secondaryTextColor = theme.colorScheme.onSurfaceVariant
+        .withAlpha(isDark ? 180 : 200);
+
     return SizedBox(
       height: 180,
       child: Center(
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(Iconsax.chart_2, color: AppColor.disabled, size: 32),
+            Icon(Iconsax.chart_2, color: iconColor, size: 32),
             SizedBox(height: Insets.sm),
             Text(
               message ?? 'No data available',
               style: ResponsiveText.body(
                 context,
-              ).copyWith(color: AppColor.disabled),
+              ).copyWith(color: primaryTextColor),
               textAlign: TextAlign.center,
             ),
             SizedBox(height: Insets.xm),
             Text(
               'Data will appear as usage is recorded',
-              style: ResponsiveText.caption(context).copyWith(
-                color: AppColor.disabled.withAlpha((0.7 * 255).toInt()),
-              ),
+              style: ResponsiveText.caption(
+                context,
+              ).copyWith(color: secondaryTextColor),
               textAlign: TextAlign.center,
             ),
           ],
@@ -922,19 +966,24 @@ class _MonitoringChartCardState extends State<MonitoringChartCard> {
   }
 
   Widget _buildErrorChart(String error) {
+    final theme = Theme.of(context);
+    final Color iconColor = theme.colorScheme.error;
+    final Color headlineColor = theme.colorScheme.error;
+    final Color messageColor = theme.colorScheme.onSurfaceVariant;
+
     return SizedBox(
       height: 180,
       child: Center(
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(Iconsax.info_circle, color: AppColor.accentRed, size: 32),
+            Icon(Iconsax.info_circle, color: iconColor, size: 32),
             SizedBox(height: Insets.sm),
             Text(
               'Error loading data',
               style: ResponsiveText.body(
                 context,
-              ).copyWith(color: AppColor.accentRed),
+              ).copyWith(color: headlineColor),
               textAlign: TextAlign.center,
             ),
             SizedBox(height: Insets.xm),
@@ -942,7 +991,7 @@ class _MonitoringChartCardState extends State<MonitoringChartCard> {
               error.length > 50 ? '${error.substring(0, 50)}...' : error,
               style: ResponsiveText.caption(
                 context,
-              ).copyWith(color: AppColor.disabled),
+              ).copyWith(color: messageColor),
               textAlign: TextAlign.center,
               maxLines: 2,
             ),
@@ -967,19 +1016,20 @@ class _ChartCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final bool isDark = theme.brightness == Brightness.dark;
+    final Color cardColor = theme.colorScheme.surface;
+    final Color shadowColor = theme.shadowColor.withAlpha(isDark ? 90 : 45);
+
     return Container(
       width: double.infinity,
       margin: EdgeInsets.only(bottom: Insets.sm),
       padding: EdgeInsets.all(Insets.lg),
       decoration: BoxDecoration(
-        color: Theme.of(context).colorScheme.surface,
+        color: cardColor,
         borderRadius: BorderRadius.circular(16),
         boxShadow: [
-          BoxShadow(
-            color: Colors.black.withAlpha((0.05 * 255).toInt()),
-            blurRadius: 8,
-            offset: Offset(0, 2),
-          ),
+          BoxShadow(color: shadowColor, blurRadius: 8, offset: Offset(0, 2)),
         ],
       ),
       child: Column(
@@ -1000,13 +1050,19 @@ class _ChartCard extends StatelessWidget {
   }
 
   Widget _buildMetricToggle(BuildContext context) {
+    final theme = Theme.of(context);
+    final bool isDark = theme.brightness == Brightness.dark;
+    final Color borderColor = theme.colorScheme.outlineVariant.withAlpha(
+      isDark ? 80 : 60,
+    );
+    final Color backgroundColor = theme.colorScheme.surfaceContainerHigh
+        .withAlpha(isDark ? 110 : 150);
+
     return Container(
       decoration: BoxDecoration(
-        color: AppColor.surface,
+        color: backgroundColor,
         borderRadius: BorderRadius.circular(8),
-        border: Border.all(
-          color: AppColor.disabled.withAlpha((0.3 * 255).toInt()),
-        ),
+        border: Border.all(color: borderColor),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
@@ -1024,18 +1080,23 @@ class _ChartCard extends StatelessWidget {
     ChartMetric metric,
   ) {
     final isSelected = selectedMetric == metric;
+    final theme = Theme.of(context);
+    final Color selectedColor = theme.colorScheme.primary;
+    final Color selectedTextColor = theme.colorScheme.onPrimary;
+    final Color unselectedTextColor = theme.colorScheme.onSurfaceVariant;
+
     return GestureDetector(
       onTap: () => onMetricChanged(metric),
       child: Container(
         padding: EdgeInsets.symmetric(horizontal: 12, vertical: 6),
         decoration: BoxDecoration(
-          color: isSelected ? AppColor.primary : Colors.transparent,
+          color: isSelected ? selectedColor : Colors.transparent,
           borderRadius: BorderRadius.circular(6),
         ),
         child: Text(
           label,
           style: ResponsiveText.caption(context).copyWith(
-            color: isSelected ? Colors.white : AppColor.disabled,
+            color: isSelected ? selectedTextColor : unselectedTextColor,
             fontWeight: isSelected ? FontWeight.w600 : FontWeight.normal,
           ),
         ),

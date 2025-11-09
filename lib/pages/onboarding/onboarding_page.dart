@@ -59,6 +59,7 @@ class _OnboardingPageState extends State<OnboardingPage> {
   Future<void> _completeOnboarding() async {
     if (_isCompleting) return;
     setState(() => _isCompleting = true);
+
     try {
       final prefs = await SharedPreferences.getInstance();
       await prefs.setBool('seen_onboarding', true);
@@ -74,12 +75,16 @@ class _OnboardingPageState extends State<OnboardingPage> {
       if (widget.onCompleted != null) {
         await widget.onCompleted!.call();
       } else {
-        context.go('/');
+        context.go('/login');
       }
-    } finally {
-      if (mounted) {
-        setState(() => _isCompleting = false);
-      }
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _isCompleting = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Something went wrong. Please try again.'),
+        ),
+      );
     }
   }
 
