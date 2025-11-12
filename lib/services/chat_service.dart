@@ -32,6 +32,7 @@ class ChatService extends ChangeNotifier {
   final Map<String, String?> _userPhotoUrlCache = {};
   final Map<String, String?> _userEmailCache = {};
   final CloudinaryService _cloudinaryService = CloudinaryService();
+  String? _defaultAdminId;
 
   // Getters
   String? get currentChatId => _currentChatId;
@@ -39,6 +40,7 @@ class ChatService extends ChangeNotifier {
   ChatThread? get currentConversation => _currentConversation;
   bool get isLoading => _isLoading;
   String? get error => _error;
+  String? get defaultAdminId => _defaultAdminId;
 
   /// Initialize chat for current user
   Future<void> initializeChat() async {
@@ -54,6 +56,11 @@ class ChatService extends ChangeNotifier {
     notifyListeners();
 
     try {
+      await _ensureDefaultAdminId();
+      if (_defaultAdminId == null) {
+        throw StateError('No admin available for chat support');
+      }
+
       // Find or create conversation
       await _findOrCreateConversation(user.uid);
 
@@ -67,6 +74,33 @@ class ChatService extends ChangeNotifier {
     } finally {
       _isLoading = false;
       notifyListeners();
+    }
+  }
+
+  Future<void> _ensureDefaultAdminId() async {
+    if (_defaultAdminId != null) return;
+
+    try {
+      QuerySnapshot<Map<String, dynamic>> query =
+          await _firestore
+              .collection('admins')
+              .where('isActive', isEqualTo: true)
+              .limit(1)
+              .get();
+
+      if (query.docs.isEmpty) {
+        query = await _firestore.collection('admins').limit(1).get();
+      }
+
+      if (query.docs.isNotEmpty) {
+        _defaultAdminId = query.docs.first.id;
+        AppLogger.i('[ChatService] ✅ Resolved default admin: $_defaultAdminId');
+      } else {
+        AppLogger.e('[ChatService] ❌ No admin document found in Firestore');
+      }
+    } catch (e) {
+      AppLogger.e('[ChatService] ❌ Error resolving admin ID: $e');
+      rethrow;
     }
   }
 
@@ -88,6 +122,7 @@ class ChatService extends ChangeNotifier {
         final doc = query.docs.first;
         _currentChatId = doc.id;
         _currentConversation = ChatThread.fromMap(doc.id, doc.data());
+        await _ensureConversationMetadata(_currentConversation!, userId);
         AppLogger.i(
           '[ChatService] ✅ [ChatService] Found existing conversation: $_currentChatId',
         );
@@ -172,6 +207,46 @@ class ChatService extends ChangeNotifier {
     }
   }
 
+  Future<String?> _resolveDisplayName(String userId) async {
+    try {
+      final doc = await _firestore.collection('users').doc(userId).get();
+      if (doc.exists) {
+        final data = doc.data();
+        if (data != null) {
+          final displayName = (data['displayName'] as String?)?.trim();
+          if (displayName != null && displayName.isNotEmpty) return displayName;
+
+          final firstName = (data['firstName'] as String?)?.trim() ?? '';
+          final lastName = (data['lastName'] as String?)?.trim() ?? '';
+          final fullName =
+              [
+                firstName,
+                lastName,
+              ].where((part) => part.isNotEmpty).join(' ').trim();
+          if (fullName.isNotEmpty) return fullName;
+        }
+      }
+    } catch (e) {
+      AppLogger.e('[ChatService] Error resolving display name: $e');
+    }
+    final authUser = _auth.currentUser;
+    if (authUser?.uid == userId) {
+      final authDisplayName = authUser?.displayName?.trim();
+      if (authDisplayName != null && authDisplayName.isNotEmpty) {
+        return authDisplayName;
+      }
+      final email = authUser?.email;
+      if (email != null && email.isNotEmpty) {
+        return email.split('@').first;
+      }
+    }
+    final email = await getUserEmail(userId);
+    if (email != null && email.isNotEmpty) {
+      return email.split('@').first;
+    }
+    return null;
+  }
+
   /// Unsend a message (mark as unsent via metadata)
   Future<bool> unsendMessage(String messageId) async {
     if (_currentChatId == null) return false;
@@ -219,17 +294,25 @@ class ChatService extends ChangeNotifier {
       final chatId = _uuid.v4();
       final now = Timestamp.now();
 
+      final userName = await _resolveDisplayName(userId);
+      final userEmail = await getUserEmail(userId);
+      final userPhotoUrl = await getUserPhotoUrl(userId);
+
       // Create conversation document
       final conversation = ChatThread(
         id: chatId,
-        participants: [userId, 'admin'],
+        participants: [userId, _defaultAdminId!],
         createdAt: now,
         lastMessageTime: now,
         lastMessage: null,
         subject: null,
         status: 'active',
         priority: 'normal',
-        unreadCount: {userId: 0, 'admin': 0},
+        unreadCount: {userId: 0, _defaultAdminId!: 0},
+        assignedAdminId: _defaultAdminId,
+        userName: userName,
+        userEmail: userEmail,
+        userPhotoUrl: userPhotoUrl,
       );
 
       await _firestore
@@ -249,6 +332,96 @@ class ChatService extends ChangeNotifier {
       );
       rethrow;
     }
+  }
+
+  Future<void> _ensureConversationMetadata(
+    ChatThread conversation,
+    String userId,
+  ) async {
+    final missingName =
+        conversation.userName == null || conversation.userName!.trim().isEmpty;
+    final missingEmail =
+        conversation.userEmail == null ||
+        conversation.userEmail!.trim().isEmpty;
+    final missingPhoto =
+        conversation.userPhotoUrl == null ||
+        conversation.userPhotoUrl!.trim().isEmpty;
+
+    if (!missingName && !missingEmail && !missingPhoto) return;
+
+    final updates = <String, dynamic>{};
+
+    if (missingName) {
+      final resolvedName = await _resolveDisplayName(userId);
+      if (resolvedName != null && resolvedName.trim().isNotEmpty) {
+        updates['userName'] = resolvedName.trim();
+      }
+    }
+
+    if (missingEmail) {
+      final resolvedEmail = await getUserEmail(userId);
+      if (resolvedEmail != null && resolvedEmail.trim().isNotEmpty) {
+        updates['userEmail'] = resolvedEmail.trim();
+      }
+    }
+
+    if (missingPhoto) {
+      final resolvedPhoto = await getUserPhotoUrl(userId);
+      if (resolvedPhoto != null && resolvedPhoto.trim().isNotEmpty) {
+        updates['userPhotoUrl'] = resolvedPhoto.trim();
+      }
+    }
+
+    if (updates.isEmpty) return;
+
+    updates['updatedAt'] = FieldValue.serverTimestamp();
+
+    try {
+      await _firestore.collection('chats').doc(conversation.id).update(updates);
+      final refreshed = await getConversation(conversation.id);
+      if (refreshed != null) {
+        _currentConversation = refreshed;
+      }
+    } catch (e) {
+      AppLogger.e('[ChatService] ❌ Error updating conversation metadata: $e');
+    }
+  }
+
+  Future<Map<String, Object?>> _buildUnreadCountUpdates(String senderId) async {
+    if (_currentChatId == null) return {};
+
+    List<String> participants = _currentConversation?.participants ?? [];
+
+    if (participants.isEmpty) {
+      try {
+        final doc =
+            await _firestore.collection('chats').doc(_currentChatId!).get();
+        final data = doc.data();
+        if (doc.exists && data != null) {
+          participants = List<String>.from(data['participants'] ?? const []);
+          _currentConversation = ChatThread.fromMap(doc.id, data);
+        }
+      } catch (e) {
+        AppLogger.e(
+          '[ChatService] ❌ Error loading participants for unread update: $e',
+        );
+      }
+    }
+
+    if (participants.isEmpty) return {};
+
+    final updates = <String, Object?>{};
+
+    for (final participant in participants) {
+      final fieldPath = 'unreadCount.$participant';
+      if (participant == senderId) {
+        updates[fieldPath] = 0;
+      } else {
+        updates[fieldPath] = FieldValue.increment(1);
+      }
+    }
+
+    return updates;
   }
 
   /// Start listening to messages
@@ -296,10 +469,17 @@ class ChatService extends ChangeNotifier {
       final messageId = _uuid.v4();
       final now = Timestamp.now();
 
+      final senderName = await _resolveDisplayName(user.uid);
+      final senderPhoto = await getUserPhotoUrl(user.uid);
+      final senderEmail = await getUserEmail(user.uid);
+
       final message = ChatMessageV2(
         id: messageId,
         chatId: _currentChatId!,
         senderId: user.uid,
+        senderName: senderName,
+        senderPhotoUrl: senderPhoto,
+        senderEmail: senderEmail,
         text: text,
         timestamp: now,
         type: 'text',
@@ -314,14 +494,21 @@ class ChatService extends ChangeNotifier {
           .doc(messageId)
           .set(message.toMap());
 
-      // Update conversation with last message
-      // Note: Unread count is incremented by Cloud Function to prevent race conditions
-      await _firestore.collection('chats').doc(_currentChatId!).update({
+      final unreadUpdates = await _buildUnreadCountUpdates(user.uid);
+
+      // Update conversation with last message and unread counters
+      final Map<String, Object?> conversationUpdate = {
         'lastMessage': text,
         'lastMessageTime': now,
         'status': 'active',
         'updatedAt': FieldValue.serverTimestamp(),
-      });
+      };
+      conversationUpdate.addAll(unreadUpdates);
+
+      await _firestore
+          .collection('chats')
+          .doc(_currentChatId!)
+          .update(conversationUpdate);
 
       AppLogger.i('[ChatService] ✅ [ChatService] Message sent: $text');
       return true;
@@ -362,10 +549,17 @@ class ChatService extends ChangeNotifier {
       final messageId = _uuid.v4();
       final now = Timestamp.now();
 
+      final senderName = await _resolveDisplayName(user.uid);
+      final senderPhoto = await getUserPhotoUrl(user.uid);
+      final senderEmail = await getUserEmail(user.uid);
+
       final message = ChatMessageV2(
         id: messageId,
         chatId: _currentChatId!,
         senderId: user.uid,
+        senderName: senderName,
+        senderPhotoUrl: senderPhoto,
+        senderEmail: senderEmail,
         text: 'Image',
         timestamp: now,
         type: 'image',
@@ -387,13 +581,21 @@ class ChatService extends ChangeNotifier {
           .doc(messageId)
           .set(message.toMap());
 
-      // Update conversation with last message
-      await _firestore.collection('chats').doc(_currentChatId!).update({
+      final unreadUpdates = await _buildUnreadCountUpdates(user.uid);
+
+      // Update conversation with last message and unread counters
+      final Map<String, Object?> conversationUpdate = {
         'lastMessage': '📷 Image',
         'lastMessageTime': now,
         'status': 'active',
         'updatedAt': FieldValue.serverTimestamp(),
-      });
+      };
+      conversationUpdate.addAll(unreadUpdates);
+
+      await _firestore
+          .collection('chats')
+          .doc(_currentChatId!)
+          .update(conversationUpdate);
 
       AppLogger.i('[ChatService] ✅ Image message sent: $imageUrl');
       return true;
@@ -410,9 +612,12 @@ class ChatService extends ChangeNotifier {
     if (_currentChatId == null) return;
 
     try {
+      final userId = _auth.currentUser?.uid;
+      if (userId == null) return;
       await _firestore.collection('chats').doc(_currentChatId!).update({
-        'lastReadByUser': Timestamp.now(),
-        'updatedAt': Timestamp.now(),
+        'lastReadByUser': FieldValue.serverTimestamp(),
+        'updatedAt': FieldValue.serverTimestamp(),
+        'unreadCount.$userId': 0,
       });
     } catch (e) {
       AppLogger.e('[ChatService] ❌ [ChatService] Error marking as read: $e');

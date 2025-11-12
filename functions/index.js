@@ -12,13 +12,34 @@ const rtdb = admin.database();
 const ONESIGNAL_APP_ID = '741790af-bbf1-4480-9c92-18352b884ea3';
 // Note: REST API Key should be stored in Firebase Functions config
 // Set it using: firebase functions:config:set onesignal.rest_api_key="YOUR_KEY"
-const ONESIGNAL_REST_API_KEY = functions.config().onesignal?.rest_api_key || '';
+const DEFAULT_ONESIGNAL_REST_API_KEY =
+  'os_v2_app_oqlzbl536fcibhesda2sxccouom43csqdcaulf4m3xigbvnnujd5lckbdgwz74v4jafijp2muzpjx6y5mkvvbo6nnac7cfcazacz6va';
+const ONESIGNAL_REST_API_KEY =
+  functions.config().onesignal?.rest_api_key ||
+  process.env.ONESIGNAL_REST_API_KEY ||
+  DEFAULT_ONESIGNAL_REST_API_KEY;
+const HAS_ONESIGNAL_REST_API_KEY = Boolean(ONESIGNAL_REST_API_KEY);
+
+if (
+  !functions.config().onesignal?.rest_api_key &&
+  !process.env.ONESIGNAL_REST_API_KEY
+) {
+  console.warn(
+    '[OneSignal] Using fallback REST API key. Configure firebase functions:config:set onesignal.rest_api_key="YOUR_KEY" for production.',
+  );
+}
 
 /**
  * Helper function to send OneSignal notification via REST API
  */
-async function sendOneSignalNotification(playerIds, title, body, data = {}, actionButtons = null) {
-  if (!ONESIGNAL_REST_API_KEY || playerIds.length === 0) {
+async function sendOneSignalNotification(
+  playerIds,
+  title,
+  body,
+  data = {},
+  options = {},
+) {
+  if (!HAS_ONESIGNAL_REST_API_KEY || playerIds.length === 0) {
     console.log('OneSignal REST API Key not configured or no player IDs');
     return;
   }
@@ -29,14 +50,34 @@ async function sendOneSignalNotification(playerIds, title, body, data = {}, acti
       include_player_ids: playerIds,
       headings: { en: title },
       contents: { en: body },
-      data: data,
-      android_channel_id: 'budget_alerts', // Channel for critical alerts
-      priority: 10, // High priority
+      data,
+      android_channel_id: options.androidChannelId || 'budget_alerts',
+      priority: options.priority ?? 10,
     };
 
-    // Add action buttons if provided
-    if (actionButtons && actionButtons.length > 0) {
-      notificationPayload.buttons = actionButtons;
+    if (options.buttons && options.buttons.length > 0) {
+      notificationPayload.buttons = options.buttons;
+    }
+    if (options.url) {
+      notificationPayload.url = options.url;
+    }
+    if (options.smallIcon) {
+      notificationPayload.small_icon = options.smallIcon;
+    }
+    if (options.iosSound) {
+      notificationPayload.ios_sound = options.iosSound;
+    }
+    if (options.androidSound) {
+      notificationPayload.android_sound = options.androidSound;
+    }
+    if (options.iosCategory) {
+      notificationPayload.ios_category = options.iosCategory;
+    }
+    if (options.mutableContent) {
+      notificationPayload.mutable_content = options.mutableContent;
+    }
+    if (options.badge !== undefined) {
+      notificationPayload.ios_badgeCount = options.badge;
     }
 
     const response = await axios.post(
@@ -73,6 +114,37 @@ async function getUserOneSignalPlayerIds(userId) {
     console.error(`Error getting player IDs for user ${userId}:`, error);
     return [];
   }
+}
+
+/**
+ * Get OneSignal player IDs for any participant (user or admin)
+ */
+async function getChatParticipantPlayerIds(participantId) {
+  const userPlayerIds = await getUserOneSignalPlayerIds(participantId);
+  if (userPlayerIds.length > 0) {
+    return userPlayerIds;
+  }
+
+  try {
+    const adminPlayersSnapshot = await db
+      .collection('admins')
+      .doc(participantId)
+      .collection('onesignalPlayers')
+      .get();
+
+    if (!adminPlayersSnapshot.empty) {
+      return adminPlayersSnapshot.docs
+        .map(doc => doc.data().playerId)
+        .filter(Boolean);
+    }
+  } catch (error) {
+    console.error(
+      `Error getting player IDs for admin ${participantId}:`,
+      error,
+    );
+  }
+
+  return [];
 }
 
 /**
@@ -763,72 +835,105 @@ exports.sendChatNotification = functions.firestore
       const chatData = chatDoc.data();
       const participants = chatData.participants || [];
 
-      // Find recipient (the other participant - skip sender)
-      let recipientId = null;
-      for (const participantId of participants) {
-        if (participantId !== senderId) {
-          recipientId = participantId;
-          break;
-        }
-      }
+      const recipientIds = participants.filter(
+        participantId => participantId !== senderId,
+      );
 
-      if (!recipientId) {
-        console.log('No recipient found for chat notification');
+      if (recipientIds.length === 0) {
+        console.log('No recipients found for chat notification');
         return null;
       }
 
       // Get sender name
-      let senderName = 'Support';
-      if (senderId === 'admin') {
-        senderName = 'Support Team';
-      } else {
-        try {
+      let senderName =
+        (messageData.senderName && messageData.senderName.trim()) ||
+        null;
+      if (!senderName && messageData.senderEmail) {
+        senderName = messageData.senderEmail.split('@')[0];
+      }
+      try {
+        if (!senderName) {
+          const adminDoc = await db.collection('admins').doc(senderId).get();
+          if (adminDoc.exists) {
+            const adminData = adminDoc.data() || {};
+            senderName =
+              adminData.displayName ||
+              adminData.name ||
+              adminData.email?.split('@')[0] ||
+              'Support Team';
+          }
+        }
+        if (!senderName) {
           const senderDoc = await db.collection('users').doc(senderId).get();
           if (senderDoc.exists) {
             const senderUserData = senderDoc.data();
-            senderName = senderUserData.name || 
-                        senderUserData.firstName || 
-                        senderUserData.email?.split('@')[0] || 
-                        'User';
+            senderName =
+              senderUserData.name ||
+              senderUserData.firstName ||
+              senderUserData.email?.split('@')[0] ||
+              'User';
           }
-        } catch (e) {
-          console.log('Error getting sender name:', e);
         }
+      } catch (e) {
+        console.log('Error getting sender name:', e);
+      }
+      if (!senderName) {
+        senderName = 'Support';
       }
 
-      // Get recipient's OneSignal player IDs
-      const playerIds = await getUserOneSignalPlayerIds(recipientId);
-      
+      // Skip notifications for unsent/system messages
+      if (messageData.metadata?.unsent) {
+        console.log(`Skipping notification for unsent message ${messageId}`);
+        return null;
+      }
+
+      if (messageData.type === 'system') {
+        console.log(`Skipping system message ${messageId}`);
+        return null;
+      }
+
+      // Get recipients' OneSignal player IDs
+      const recipientPlayerIdsArrays = await Promise.all(
+        recipientIds.map(getChatParticipantPlayerIds),
+      );
+      const playerIds = [
+        ...new Set(
+          recipientPlayerIdsArrays
+            .flat()
+            .filter(id => typeof id === 'string' && id.trim().length > 0),
+        ),
+      ];
+
       if (playerIds.length === 0) {
-        console.log(`No OneSignal player IDs found for recipient ${recipientId}`);
+        console.log(
+          `No OneSignal player IDs found for recipients of chat ${chatId}`,
+        );
         return null;
       }
 
       // Prepare message preview (first 100 chars)
-      const messageText = messageData.text || '';
-      const messagePreview = messageText.length > 100 
-        ? messageText.substring(0, 100) + '...'
-        : messageText;
+      const messageType = (messageData.type || 'text').toLowerCase();
+      const messageText = (messageData.text || '').trim();
+      let messagePreview = messageText;
+
+      if (!messagePreview) {
+        if (messageType === 'image') {
+          messagePreview = '📷 Image';
+        } else if (messageType === 'file') {
+          const firstAttachment = Array.isArray(messageData.attachments)
+            ? messageData.attachments.find(att => att && att.name)
+            : null;
+          const fileName = firstAttachment?.name || 'File';
+          messagePreview = `📎 ${fileName}`;
+        } else {
+          messagePreview = 'You have a new message';
+        }
+      } else if (messagePreview.length > 100) {
+        messagePreview = `${messagePreview.substring(0, 100)}...`;
+      }
 
       // Format timestamp
       const timestamp = messageData.timestamp?.toDate() || new Date();
-      const timeString = timestamp.toLocaleTimeString('en-US', { 
-        hour: 'numeric', 
-        minute: '2-digit',
-        hour12: true 
-      });
-
-      // Increment unread count for recipient
-      // This is done server-side to ensure consistency and prevent race conditions
-      try {
-        await db.collection('chats').doc(chatId).update({
-          [`unreadCount.${recipientId}`]: admin.firestore.FieldValue.increment(1),
-        });
-        console.log(`Unread count incremented for recipient ${recipientId}`);
-      } catch (e) {
-        console.error('Error incrementing unread count:', e);
-        // Continue even if increment fails - notification should still be sent
-      }
 
       // Send OneSignal notification
       await sendOneSignalNotification(
@@ -841,10 +946,18 @@ exports.sendChatNotification = functions.firestore
           senderId: senderId,
           messageId: messageId,
           timestamp: timestamp.toISOString(),
-        }
+        },
+        {
+          androidChannelId: 'chat_messages',
+          androidSound: 'default',
+          iosSound: 'default',
+          iosCategory: 'chat_messages',
+        },
       );
 
-      console.log(`Chat notification sent to ${recipientId} for chat ${chatId}`);
+      console.log(
+        `Chat notification sent to ${recipientIds.join(', ')} for chat ${chatId}`,
+      );
       return null;
     } catch (error) {
       console.error('Error in chat notification:', error);

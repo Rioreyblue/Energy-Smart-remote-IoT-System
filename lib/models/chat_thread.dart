@@ -12,6 +12,9 @@ class ChatThread {
   final String priority; // low | normal | high | urgent
   final String? assignedAdminId;
   final Map<String, bool>? typing;
+  final String? userName;
+  final String? userEmail;
+  final String? userPhotoUrl;
 
   ChatThread({
     required this.id,
@@ -25,6 +28,9 @@ class ChatThread {
     this.priority = 'normal',
     this.assignedAdminId,
     this.typing,
+    this.userName,
+    this.userEmail,
+    this.userPhotoUrl,
   });
 
   factory ChatThread.fromMap(String id, Map<String, dynamic> data) {
@@ -49,6 +55,9 @@ class ChatThread {
           data['typing'] != null
               ? Map<String, bool>.from(data['typing'])
               : null,
+      userName: data['userName'],
+      userEmail: data['userEmail'],
+      userPhotoUrl: data['userPhotoUrl'],
     );
   }
 
@@ -64,7 +73,9 @@ class ChatThread {
       'priority': priority,
       'assignedAdminId': assignedAdminId,
       'typing': typing,
+      'userName': userName,
+      'userEmail': userEmail,
+      'userPhotoUrl': userPhotoUrl,
     };
   }
 }
-

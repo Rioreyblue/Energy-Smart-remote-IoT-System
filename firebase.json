@@ -60,21 +60,6 @@
         "npm --prefix \"$RESOURCE_DIR\" run lint"
       ],
       "source": "functions"
-    },
-    {
-      "source": "C:\\project\\energy_smart\\functions",
-      "codebase": "energy_smart",
-      "disallowLegacyRuntimeConfig": true,
-      "ignore": [
-        "node_modules",
-        ".git",
-        "firebase-debug.log",
-        "firebase-debug.*.log",
-        "*.local"
-      ],
-      "predeploy": [
-        "npm --prefix \"$RESOURCE_DIR\" run lint"
-      ]
     }
   ]
 }

@@ -8,19 +8,17 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'dart:io' show Platform;
 import '../utils/app_logger.dart';
 import '../utils/app_router.dart';
+import '../config/onesignal_config.dart';
+import 'threshold_alert_service.dart';
 
 /// Service for managing OneSignal push notifications and local notifications
 class NotificationService {
   final FirebaseAuth _auth = FirebaseAuth.instance;
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
 
-  static const String _onesignalAppId = '741790af-bbf1-4480-9c92-18352b884ea3';
+  static const String _onesignalAppId = OneSignalConfig.appId;
   String? _oneSignalPlayerId;
   bool _isInitialized = false;
-
-  // Throttling for proceed notifications (minimum 5 minutes between notifications)
-  DateTime? _lastProceedNotificationTime;
-  static const Duration _proceedNotificationThrottle = Duration(minutes: 5);
 
   String get _userId => _auth.currentUser?.uid ?? '';
   String? get playerId => _oneSignalPlayerId;
@@ -41,7 +39,7 @@ class NotificationService {
       await Future.delayed(const Duration(seconds: 2));
 
       // Get player ID (subscription ID)
-      final subscriptionId = await OneSignal.User.pushSubscription.id;
+      final subscriptionId = OneSignal.User.pushSubscription.id;
       if (subscriptionId != null && subscriptionId.isNotEmpty) {
         _oneSignalPlayerId = subscriptionId;
         if (_userId.isNotEmpty) {
@@ -108,33 +106,40 @@ class NotificationService {
         ledColor: const Color(0xFFE74C3C),
         playSound: true,
         enableVibration: true,
-        // Long repeating vibration pattern: vibrate 500ms, pause 200ms, repeat
-        // This creates continuous vibration until notification is dismissed
-        vibrationPattern: Int64List.fromList([
-          0,
-          500,
-          200,
-          500,
-          200,
-          500,
-          200,
-          500,
-          200,
-          500,
-          200,
-          500,
-          200,
-          500,
-          200,
-          500,
-          200,
-          500,
-          200,
-        ]),
+        vibrationPattern: Int64List.fromList([0, 1200, 400, 1200, 400, 1200]),
         importance: NotificationImportance.High,
         criticalAlerts: true,
       ),
+      NotificationChannel(
+        channelKey: 'threshold_alerts',
+        channelName: 'Threshold Alerts',
+        channelDescription: 'Persistent alerts when usage exceeds thresholds',
+        defaultColor: const Color(0xFFE74C3C),
+        ledColor: const Color(0xFFE74C3C),
+        playSound: true,
+        enableVibration: true,
+        importance: NotificationImportance.Max,
+        criticalAlerts: true,
+        locked: true,
+        vibrationPattern: Int64List.fromList([
+          0,
+          1800,
+          600,
+          1800,
+          600,
+          1800,
+          600,
+          1800,
+          600,
+          1800,
+          600,
+        ]),
+        defaultRingtoneType: DefaultRingtoneType.Alarm,
+        defaultPrivacy: NotificationPrivacy.Public,
+      ),
     ], debug: true);
+
+    await ThresholdAlertService.instance.ensureChannelReady();
   }
 
   /// Request notification permissions
@@ -145,12 +150,19 @@ class NotificationService {
         true,
       );
 
+      final localAllowed = await AwesomeNotifications().isNotificationAllowed();
+      if (!localAllowed) {
+        await AwesomeNotifications().requestPermissionToSendNotifications(
+          channelKey: 'threshold_alerts',
+        );
+      }
+
       if (hasPermission) {
         AppLogger.i('[NotificationService] Notification permission granted');
 
         // Get player ID after permission is granted (with delay)
         await Future.delayed(const Duration(seconds: 2));
-        final subscriptionId = await OneSignal.User.pushSubscription.id;
+        final subscriptionId = OneSignal.User.pushSubscription.id;
         if (subscriptionId != null &&
             subscriptionId.isNotEmpty &&
             _oneSignalPlayerId != subscriptionId) {
@@ -214,7 +226,7 @@ class NotificationService {
 
     try {
       await Future.delayed(const Duration(seconds: 1));
-      final subscriptionId = await OneSignal.User.pushSubscription.id;
+      final subscriptionId = OneSignal.User.pushSubscription.id;
       if (subscriptionId != null &&
           subscriptionId.isNotEmpty &&
           _oneSignalPlayerId != subscriptionId) {
@@ -241,6 +253,9 @@ class NotificationService {
       final type = payload['type'];
       final buttonKey = receivedAction.buttonKeyPressed;
       final alertId = payload['alertId'];
+
+      // Allow threshold alert service to handle action buttons.
+      await ThresholdAlertService.instance.handleAction(receivedAction);
 
       AppLogger.i(
         '[NotificationService] AwesomeNotification action received: type=$type, buttonKey=$buttonKey, alertId=$alertId',
@@ -279,6 +294,17 @@ class NotificationService {
           appRouter.go('/home?tab=2');
           return;
         }
+      }
+
+      if (type == 'threshold_alert') {
+        final button = receivedAction.buttonKeyPressed;
+        if (button == null || button.isEmpty) {
+          AppLogger.i(
+            '[NotificationService] Threshold alert tapped - navigating to goals tab.',
+          );
+          appRouter.go('/home?tab=2');
+        }
+        return;
       }
     } catch (e) {
       AppLogger.e(
@@ -392,33 +418,10 @@ class NotificationService {
   /// Handle "Proceed" action button click
   Future<void> _handleProceedAction(String? alertId) async {
     try {
-      if (_userId.isEmpty) {
-        AppLogger.w(
-          '[NotificationService] User not authenticated for proceed action',
-        );
-        return;
-      }
-
       AppLogger.i(
         '[NotificationService] Proceed action clicked for alert: $alertId',
       );
-
-      // Store proceed state in Firestore
-      await _firestore
-          .collection('users')
-          .doc(_userId)
-          .collection('settings')
-          .doc('budget_alert_state')
-          .set({
-            'proceedActive': true,
-            'alertId': alertId ?? '',
-            'proceededAt': FieldValue.serverTimestamp(),
-            'dismissedAt': null,
-          }, SetOptions(merge: true));
-
-      AppLogger.i(
-        '[NotificationService] Proceed state saved - notifications will continue',
-      );
+      await ThresholdAlertService.instance.resetState();
     } catch (e) {
       AppLogger.e('[NotificationService] Error handling proceed action: $e');
     }
@@ -427,128 +430,24 @@ class NotificationService {
   /// Handle "Dismiss" action button click
   Future<void> _handleDismissAction(String? alertId) async {
     try {
-      if (_userId.isEmpty) {
-        AppLogger.w(
-          '[NotificationService] User not authenticated for dismiss action',
-        );
-        return;
-      }
-
       AppLogger.i(
         '[NotificationService] Dismiss action clicked for alert: $alertId',
       );
 
-      // Cancel all budget alert notifications to stop vibration
-      await _cancelBudgetAlertNotifications();
-
-      // Update dismiss state in Firestore
-      await _firestore
-          .collection('users')
-          .doc(_userId)
-          .collection('settings')
-          .doc('budget_alert_state')
-          .set({
-            'proceedActive': false,
-            'alertId': alertId ?? '',
-            'dismissedAt': FieldValue.serverTimestamp(),
-          }, SetOptions(merge: true));
-
-      // Reset throttling timer when dismissed
-      _lastProceedNotificationTime = null;
-
-      AppLogger.i(
-        '[NotificationService] Dismiss state saved - notifications will stop and vibration cancelled',
-      );
+      await ThresholdAlertService.instance.stopAlert();
     } catch (e) {
       AppLogger.e('[NotificationService] Error handling dismiss action: $e');
     }
   }
 
-  /// Cancel all budget alert notifications to stop vibration
-  Future<void> _cancelBudgetAlertNotifications() async {
-    try {
-      // Dismiss all displayed notifications to stop vibration
-      // Budget alerts use IDs in the range 0-99999 (remainder of timestamp)
-      // We'll dismiss notifications in batches to stop vibration
-      for (int id = 0; id < 100000; id += 100) {
-        try {
-          await AwesomeNotifications().dismiss(id);
-        } catch (_) {
-          // Ignore errors for non-existent notifications
-        }
-      }
-
-      // Also cancel any scheduled notifications
-      try {
-        final scheduled =
-            await AwesomeNotifications().listScheduledNotifications();
-        for (final notification in scheduled) {
-          try {
-            // Cancel by content ID if available
-            if (notification.content != null) {
-              await AwesomeNotifications().cancel(notification.content!.id!);
-            }
-          } catch (_) {
-            // Ignore errors
-          }
-        }
-      } catch (_) {
-        // Ignore errors
-      }
-
-      AppLogger.i(
-        '[NotificationService] Budget alert notifications cancelled to stop vibration',
-      );
-    } catch (e) {
-      AppLogger.e(
-        '[NotificationService] Error cancelling budget alert notifications: $e',
-      );
-    }
-  }
-
   /// Check if user has chosen "Proceed" for current budget alert
   Future<bool> isProceedActive() async {
-    try {
-      if (_userId.isEmpty) return false;
-
-      final stateDoc =
-          await _firestore
-              .collection('users')
-              .doc(_userId)
-              .collection('settings')
-              .doc('budget_alert_state')
-              .get();
-
-      if (!stateDoc.exists) return false;
-
-      final data = stateDoc.data();
-      return data?['proceedActive'] == true;
-    } catch (e) {
-      AppLogger.e('[NotificationService] Error checking proceed state: $e');
-      return false;
-    }
+    return ThresholdAlertService.instance.isAlertActive();
   }
 
   /// Reset proceed state (call when new budget alert is created)
   Future<void> resetProceedState() async {
-    try {
-      if (_userId.isEmpty) return;
-
-      await _firestore
-          .collection('users')
-          .doc(_userId)
-          .collection('settings')
-          .doc('budget_alert_state')
-          .set({
-            'proceedActive': false,
-            'alertId': null,
-            'dismissedAt': null,
-          }, SetOptions(merge: true));
-
-      AppLogger.i('[NotificationService] Proceed state reset');
-    } catch (e) {
-      AppLogger.e('[NotificationService] Error resetting proceed state: $e');
-    }
+    await ThresholdAlertService.instance.resetState();
   }
 
   /// Send critical alert (remote OneSignal notification)
@@ -670,7 +569,7 @@ class NotificationService {
     }
   }
 
-  /// Send budget threshold notification with vibration and push notification
+  /// Send budget threshold notification with persistent local alert.
   Future<void> sendBudgetThresholdNotification({
     required double consumedCost,
     required double remainingBudget,
@@ -682,128 +581,16 @@ class NotificationService {
     String? budgetName,
   }) async {
     try {
-      if (_userId.isEmpty) {
-        AppLogger.w('[NotificationService] User not authenticated');
-        return;
-      }
-
-      // Calculate percentage used
-      final usedPercentage = (consumedCost / totalBudget * 100).toStringAsFixed(
-        1,
-      );
-
-      // Check if notification was already sent today for this threshold (prevent duplicates)
-      // Skip this check if bypassDailyCheck is true (when proceed is active)
-      if (!bypassDailyCheck) {
-        // Include threshold in key to allow notifications for different thresholds on same day
-        final today = DateTime.now().toIso8601String().split('T')[0];
-        final thresholdInt = thresholdPercentage.toInt();
-        final notificationKey = 'budget_alert_${today}_$thresholdInt';
-
-        final notificationDoc =
-            await _firestore
-                .collection('users')
-                .doc(_userId)
-                .collection('notifications')
-                .doc(notificationKey)
-                .get();
-
-        if (notificationDoc.exists) {
-          AppLogger.i(
-            '[NotificationService] Budget threshold notification already sent today',
-          );
-          return;
-        }
-      } else {
-        // When bypassing daily check (proceed active), apply throttling to prevent spam
-        final now = DateTime.now();
-        if (_lastProceedNotificationTime != null) {
-          final timeSinceLastNotification = now.difference(
-            _lastProceedNotificationTime!,
-          );
-          if (timeSinceLastNotification < _proceedNotificationThrottle) {
-            AppLogger.i(
-              '[NotificationService] Proceed notification throttled - last sent ${timeSinceLastNotification.inMinutes} minutes ago',
-            );
-            return;
-          }
-        }
-        _lastProceedNotificationTime = now;
-      }
-
-      final alertId = DateTime.now().millisecondsSinceEpoch.toString();
-
-      final alertPayload = {
-        'alertType': alertType,
-        'consumedCost': consumedCost,
-        'remainingBudget': remainingBudget,
-        'totalBudget': totalBudget,
-        'thresholdPercentage': thresholdPercentage,
-        'usedPercentage': double.parse(usedPercentage),
-        'timestamp': FieldValue.serverTimestamp(),
-        'sent': false,
-        'alertId': alertId,
-        'budgetId': budgetId,
-        'budgetName': budgetName,
-      };
-
-      await _firestore
-          .collection('users')
-          .doc(_userId)
-          .collection('budget_alerts')
-          .doc(alertId)
-          .set(alertPayload);
-
-      AppLogger.i(
-        '[NotificationService] Budget alert trigger written to Firestore (alertType=$alertType)',
-      );
-
-      await _firestore
-          .collection('users')
-          .doc(_userId)
-          .collection('budget_target')
-          .doc(budgetId)
-          .set({
-            'lastAlertGeneratedAt': FieldValue.serverTimestamp(),
-            'lastAlertGeneratedType': alertType,
-          }, SetOptions(merge: true));
-
-      if (!bypassDailyCheck) {
-        final proceedActive = await isProceedActive();
-        if (!proceedActive) {
-          await resetProceedState();
-        }
-      }
-
-      // Mark notification as sent in notifications collection (only if not bypassing daily check)
-      if (!bypassDailyCheck) {
-        final today = DateTime.now().toIso8601String().split('T')[0];
-        final thresholdInt = thresholdPercentage.toInt();
-        final notificationKey = 'budget_alert_${today}_$thresholdInt';
-
-        await _firestore
-            .collection('users')
-            .doc(_userId)
-            .collection('notifications')
-            .doc(notificationKey)
-            .set({
-              'sent': true,
-              'timestamp': FieldValue.serverTimestamp(),
-              'type': alertType,
-              'consumedCost': consumedCost,
-              'remainingBudget': remainingBudget,
-              'totalBudget': totalBudget,
-              'thresholdPercentage': thresholdPercentage,
-              'usedPercentage': double.parse(usedPercentage),
-            });
-      }
-
-      AppLogger.i(
-        '[NotificationService] Budget threshold notification sent successfully',
+      await ThresholdAlertService.instance.triggerAlert(
+        consumedCost: consumedCost,
+        totalBudget: totalBudget,
+        remainingBudget: remainingBudget,
+        thresholdPercentage: thresholdPercentage,
+        force: bypassDailyCheck,
       );
     } catch (e) {
       AppLogger.e(
-        '[NotificationService] Error sending budget notification: $e',
+        '[NotificationService] Error sending local threshold alert: $e',
       );
     }
   }
@@ -896,7 +683,7 @@ class NotificationService {
   Future<bool> areNotificationsEnabled() async {
     try {
       // Check if user has opted in by checking if subscription ID exists
-      final subscriptionId = await OneSignal.User.pushSubscription.id;
+      final subscriptionId = OneSignal.User.pushSubscription.id;
       return subscriptionId != null && subscriptionId.isNotEmpty;
     } catch (e) {
       AppLogger.e('[NotificationService] Error checking permissions: $e');

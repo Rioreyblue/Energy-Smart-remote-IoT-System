@@ -22,6 +22,30 @@ class _ChatSchemaSmokeTestState extends State<ChatSchemaSmokeTest> {
       return;
     }
 
+    QuerySnapshot<Map<String, dynamic>> adminQuery =
+        await _db
+            .collection('admins')
+            .where('isActive', isEqualTo: true)
+            .limit(1)
+            .get();
+
+    if (adminQuery.docs.isEmpty) {
+      adminQuery = await _db.collection('admins').limit(1).get();
+    }
+
+    if (adminQuery.docs.isEmpty) {
+      setState(() => _status = 'No admin configured');
+      return;
+    }
+
+    final adminId = adminQuery.docs.first.id;
+    final userDisplayName =
+        (user.displayName?.trim().isNotEmpty ?? false)
+            ? user.displayName!.trim()
+            : null;
+    final userEmail = user.email;
+    final userPhotoUrl = user.photoURL;
+
     // Find or create chat
     final q =
         await _db
@@ -39,16 +63,19 @@ class _ChatSchemaSmokeTestState extends State<ChatSchemaSmokeTest> {
 
     if (q.docs.isEmpty) {
       await chatRef.set({
-        'participants': [user.uid, 'admin'],
+        'participants': [user.uid, adminId],
         'lastMessage': null,
         'lastMessageTime': FieldValue.serverTimestamp(),
         'createdAt': FieldValue.serverTimestamp(),
-        'unreadCount': {user.uid: 0, 'admin': 0},
+        'unreadCount': {user.uid: 0, adminId: 0},
         'subject': null,
         'status': 'active',
         'priority': 'normal',
-        'assignedAdminId': null,
+        'assignedAdminId': adminId,
         'typing': {},
+        'userName': userDisplayName ?? userEmail?.split('@').first,
+        'userEmail': userEmail,
+        'userPhotoUrl': userPhotoUrl,
       });
     }
 
@@ -60,6 +87,9 @@ class _ChatSchemaSmokeTestState extends State<ChatSchemaSmokeTest> {
       'id': msgRef.id,
       'chatId': chatId,
       'senderId': user.uid,
+      'senderName': userDisplayName ?? userEmail?.split('@').first,
+      'senderEmail': userEmail,
+      'senderPhotoUrl': userPhotoUrl,
       'text': 'Hello from smoke test',
       'timestamp': FieldValue.serverTimestamp(),
       'type': 'text',
@@ -98,4 +128,3 @@ class _ChatSchemaSmokeTestState extends State<ChatSchemaSmokeTest> {
     );
   }
 }
-

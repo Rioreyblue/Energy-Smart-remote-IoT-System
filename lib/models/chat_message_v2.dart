@@ -4,6 +4,9 @@ class ChatMessageV2 {
   final String id;
   final String chatId;
   final String senderId;
+  final String? senderName;
+  final String? senderEmail;
+  final String? senderPhotoUrl;
   final String text;
   final Timestamp timestamp;
   final String type; // text | image | file | system
@@ -16,6 +19,9 @@ class ChatMessageV2 {
     required this.id,
     required this.chatId,
     required this.senderId,
+    this.senderName,
+    this.senderEmail,
+    this.senderPhotoUrl,
     required this.text,
     required this.timestamp,
     this.type = 'text',
@@ -30,6 +36,9 @@ class ChatMessageV2 {
       id: id,
       chatId: data['chatId'] ?? '',
       senderId: data['senderId'] ?? '',
+      senderName: data['senderName'],
+      senderEmail: data['senderEmail'],
+      senderPhotoUrl: data['senderPhotoUrl'],
       text: data['text'] ?? '',
       timestamp: (data['timestamp'] as Timestamp? ?? Timestamp.now()),
       type: data['type'] ?? 'text',
@@ -49,6 +58,9 @@ class ChatMessageV2 {
     return {
       'chatId': chatId,
       'senderId': senderId,
+      'senderName': senderName,
+      'senderEmail': senderEmail,
+      'senderPhotoUrl': senderPhotoUrl,
       'text': text,
       'timestamp': timestamp,
       'type': type,
@@ -59,4 +71,3 @@ class ChatMessageV2 {
     };
   }
 }
-

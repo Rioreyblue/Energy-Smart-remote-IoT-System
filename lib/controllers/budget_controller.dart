@@ -4,6 +4,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/foundation.dart';
 import '../services/firestore_budget_service.dart';
 import '../services/notification_service.dart';
+import '../services/threshold_monitor_service.dart';
 import '../utils/app_logger.dart';
 
 import 'package:firebase_auth/firebase_auth.dart';
@@ -109,6 +110,10 @@ class BudgetController with ChangeNotifier {
           // ignore transient errors
         }
       });
+
+      // Ensure background monitoring keeps running even when app is closed.
+      await ThresholdMonitorService.instance.registerBackgroundTask();
+      await ThresholdMonitorService.instance.runImmediateCheck();
 
       _isInitialized = true;
       _safeNotifyListeners();

@@ -449,7 +449,7 @@ class _SceneEmptyWidget extends StatelessWidget {
         borderRadius: BorderRadius.circular(Insets.lg),
       ),
       child: Center(
-        child: Column(
+        child: Column(  
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
             Icon(

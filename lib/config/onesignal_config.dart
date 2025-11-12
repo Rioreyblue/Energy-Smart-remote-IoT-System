@@ -14,7 +14,8 @@ class OneSignalConfig {
   /// when building the app, or store it securely.
   static const String restApiKey = String.fromEnvironment(
     'ONESIGNAL_REST_API_KEY',
-    defaultValue: 'm43csqdcaulf4m3xigbvnnujd', // Fallback for development
+    defaultValue:
+        'os_v2_app_oqlzbl536fcibhesda2sxccouom43csqdcaulf4m3xigbvnnujd5lckbdgwz74v4jafijp2muzpjx6y5mkvvbo6nnac7cfcazacz6va',
   );
 
   /// App name for reference

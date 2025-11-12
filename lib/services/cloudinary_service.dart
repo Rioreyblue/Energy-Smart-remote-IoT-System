@@ -1,6 +1,7 @@
 import 'dart:io';
 import 'dart:convert';
 import 'package:http/http.dart' as http;
+import '../config/cloudinary_config.dart';
 import '../utils/app_logger.dart';
 
 /// Service for uploading images to Cloudinary
@@ -10,8 +11,10 @@ class CloudinaryService {
   CloudinaryService._internal();
 
   // Cloudinary credentials
-  static const String _cloudName = 'duza86enw';
-  static const String _uploadPreset = 'energysmart_upload';
+  // Values come from CloudinaryConfig so they can be overridden via --dart-define.
+  static const String _cloudName = CloudinaryConfig.cloudName;
+  static const String _uploadPreset = CloudinaryConfig.uploadPreset;
+  static const String _defaultFolder = CloudinaryConfig.defaultFolder;
   static const String _uploadUrl =
       'https://api.cloudinary.com/v1_1/$_cloudName/image/upload';
 
@@ -29,9 +32,10 @@ class CloudinaryService {
       // Add upload preset (unsigned upload - no signature needed)
       request.fields['upload_preset'] = _uploadPreset;
 
-      // Add folder if specified
-      if (folder != null) {
-        request.fields['folder'] = folder;
+      // Add folder if specified, fall back to configured default
+      final resolvedFolder = (folder ?? _defaultFolder).trim();
+      if (resolvedFolder.isNotEmpty) {
+        request.fields['folder'] = resolvedFolder;
       }
 
       // Add image file
@@ -104,8 +108,9 @@ class CloudinaryService {
       request.fields['upload_preset'] = _uploadPreset;
 
       // Add folder if specified
-      if (folder != null) {
-        request.fields['folder'] = folder;
+      final resolvedFolder = (folder ?? _defaultFolder).trim();
+      if (resolvedFolder.isNotEmpty) {
+        request.fields['folder'] = resolvedFolder;
       }
 
       // Add image file from bytes

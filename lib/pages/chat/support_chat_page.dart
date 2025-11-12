@@ -299,37 +299,7 @@ class _SupportChatPageState extends State<SupportChatPage> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               if (!isCurrentUser) ...[
-                FutureBuilder<String?>(
-                  future: _chatService.getUserPhotoUrl(message.senderId),
-                  builder: (context, snapshot) {
-                    final url = snapshot.data;
-                    return Container(
-                      decoration: BoxDecoration(
-                        shape: BoxShape.circle,
-                        border: Border.all(
-                          color: AppColor.accentGreen.withAlpha(77),
-                          width: 2,
-                        ),
-                      ),
-                      child: CircleAvatar(
-                        radius: 20,
-                        backgroundImage:
-                            (url != null && url.isNotEmpty)
-                                ? NetworkImage(url)
-                                : null,
-                        backgroundColor: AppColor.accentGreen.withAlpha(26),
-                        child:
-                            (url == null || url.isEmpty)
-                                ? Icon(
-                                  Iconsax.user,
-                                  size: 20,
-                                  color: AppColor.accentGreen,
-                                )
-                                : null,
-                      ),
-                    );
-                  },
-                ),
+                _SenderAvatar(chatService: _chatService, message: message),
                 const SizedBox(width: 12),
               ],
               Flexible(
@@ -343,25 +313,9 @@ class _SupportChatPageState extends State<SupportChatPage> {
                     if (!isCurrentUser)
                       Padding(
                         padding: const EdgeInsets.only(bottom: 4, left: 4),
-                        child: Row(
-                          children: [
-                            FutureBuilder<String?>(
-                              future: _chatService.getUserEmail(
-                                message.senderId,
-                              ),
-                              builder: (context, snapshot) {
-                                final email = snapshot.data ?? 'Support';
-                                return Text(
-                                  email,
-                                  style: TextStyle(
-                                    fontSize: 12,
-                                    fontWeight: FontWeight.w600,
-                                    color: Colors.grey[700],
-                                  ),
-                                );
-                              },
-                            ),
-                          ],
+                        child: _SenderHeader(
+                          chatService: _chatService,
+                          message: message,
                         ),
                       ),
                     // Message bubble
@@ -977,6 +931,105 @@ class _SupportChatPageState extends State<SupportChatPage> {
             },
           ),
         ],
+      ),
+    );
+  }
+}
+
+class _SenderAvatar extends StatelessWidget {
+  const _SenderAvatar({required this.chatService, required this.message});
+
+  final ChatService chatService;
+  final ChatMessageV2 message;
+
+  @override
+  Widget build(BuildContext context) {
+    final cachedUrl = message.senderPhotoUrl;
+    if (cachedUrl != null && cachedUrl.isNotEmpty) {
+      return _AvatarBubble(imageUrl: cachedUrl);
+    }
+
+    return FutureBuilder<String?>(
+      future: chatService.getUserPhotoUrl(message.senderId),
+      builder: (context, snapshot) {
+        final url = snapshot.data;
+        return _AvatarBubble(imageUrl: url);
+      },
+    );
+  }
+}
+
+class _AvatarBubble extends StatelessWidget {
+  const _AvatarBubble({this.imageUrl});
+
+  final String? imageUrl;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      decoration: BoxDecoration(
+        shape: BoxShape.circle,
+        border: Border.all(color: AppColor.accentGreen.withAlpha(77), width: 2),
+      ),
+      child: CircleAvatar(
+        radius: 20,
+        backgroundImage:
+            (imageUrl != null && imageUrl!.isNotEmpty)
+                ? NetworkImage(imageUrl!)
+                : null,
+        backgroundColor: AppColor.accentGreen.withAlpha(26),
+        child:
+            (imageUrl == null || imageUrl!.isEmpty)
+                ? Icon(Iconsax.user, size: 20, color: AppColor.accentGreen)
+                : null,
+      ),
+    );
+  }
+}
+
+class _SenderHeader extends StatelessWidget {
+  const _SenderHeader({required this.chatService, required this.message});
+
+  final ChatService chatService;
+  final ChatMessageV2 message;
+
+  @override
+  Widget build(BuildContext context) {
+    final preferred = (message.senderName ?? '').trim();
+    final fallbackEmail = (message.senderEmail ?? '').trim();
+
+    final cachedText =
+        preferred.isNotEmpty
+            ? preferred
+            : (fallbackEmail.isNotEmpty ? fallbackEmail : null);
+
+    if (cachedText != null) {
+      return _SenderLabel(text: cachedText);
+    }
+
+    return FutureBuilder<String?>(
+      future: chatService.getUserEmail(message.senderId),
+      builder: (context, snapshot) {
+        final label = (snapshot.data ?? message.senderId).trim();
+        return _SenderLabel(text: label);
+      },
+    );
+  }
+}
+
+class _SenderLabel extends StatelessWidget {
+  const _SenderLabel({required this.text});
+
+  final String text;
+
+  @override
+  Widget build(BuildContext context) {
+    return Text(
+      text,
+      style: TextStyle(
+        fontSize: 12,
+        fontWeight: FontWeight.w600,
+        color: Colors.grey[700],
       ),
     );
   }
