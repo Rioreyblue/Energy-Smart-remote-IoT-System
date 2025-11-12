@@ -11,6 +11,7 @@ class SwitchCard extends StatefulWidget {
   final String cost;
   final String timerText;
   final ValueChanged<bool> onToggle;
+  final bool enabled;
   const SwitchCard({
     required this.name,
     required this.icon,
@@ -19,6 +20,7 @@ class SwitchCard extends StatefulWidget {
     required this.cost,
     required this.timerText,
     required this.onToggle,
+    this.enabled = true,
     super.key,
   });
   @override
@@ -157,7 +159,7 @@ class _SwitchCardState extends State<SwitchCard> {
                   ),
                   child: CupertinoSwitch(
                     value: widget.isOn,
-                    onChanged: widget.onToggle,
+                    onChanged: widget.enabled ? widget.onToggle : null,
                     activeTrackColor: colorScheme.secondary,
                     inactiveTrackColor: colorScheme.onSurface.withAlpha(
                       (0.1 * 255).toInt(),

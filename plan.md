@@ -1,15 +1,38 @@
-# Local Chat Alerts with Awesome Notifications
-1. dependency-review — Removed OneSignal/FCM chat dependencies (pubspec, Android/iOS manifests).
-2. notification-service — Refactored `NotificationService` to manage local Awesome Notifications (foreground/background friendly) and expose helpers for chat badges.
-3. chat-service — On new messages, `ChatService` now triggers the local chat notification helper after the initial sync.
-4. background-monitor — Added a Workmanager-based chat monitor task that polls for unread messages and raises local alerts while the app is backgrounded or quit.
-5. cleanup-cloud — Simplified `functions/index.js` chat trigger to just log inserts (no remote push plumbing).
-6. verify — Analyzer clean for modified files; full project still has existing warning noise in debug examples.
+# User Type Prompt & Notification System Status
 
-### To-dos
+## Completed Features
 
-- [x] Remove OneSignal packages/config from Flutter and native projects.
-- [x] Refactor NotificationService/ChatNotificationService to rely on Awesome Notifications for local alerts.
-- [x] Add background Workmanager task to poll chats and generate local notifications.
-- [x] Update Cloud Functions to remove chat push logic (local handling only).
-- [x] Document/testing: chat alerts now surface locally; deployment no longer depends on Firebase billing for pushes.
+### User Type Prompt Dialog
+- ✅ Dialog prompts users to select Household or Small Business before using controllers
+- ✅ Dialog appears on all pages except Goals page when userType is empty
+- ✅ Dialog navigates to Goals page when user taps "Choose user type"
+- ✅ Dialog reappears on non-Goals pages until userType is set
+- ✅ Controllers remain blocked until userType selection is complete
+
+### Notification System
+- ✅ Chat notifications use local Awesome Notifications (no remote push needed)
+- ✅ Background Workmanager task monitors for new chat messages
+- ✅ Threshold alerts use local Awesome Notifications with native audio service
+- ✅ FCM still used for threshold/rate update notifications (requires billing)
+- ✅ OneSignal completely removed from codebase (comment cleaned up)
+
+### Implementation Details
+- `UserTypePromptDialog` component created with UI/UX matching system design
+- `HomeScreen` checks userType on tab navigation and after welcome dialog
+- `ChatService` triggers local notifications when new messages arrive
+- `ChatMonitorService` runs background checks for unread messages
+- Cloud Functions `sendChatNotification` simplified to log-only (no remote push)
+
+### Files Modified
+- `lib/home_screen.dart` - User type prompt logic
+- `lib/components/user_type_prompt_dialog.dart` - Dialog UI
+- `lib/services/chat_service.dart` - Local notification triggers
+- `lib/services/notification_service.dart` - Awesome Notifications setup
+- `lib/services/threshold_monitor_service.dart` - Background chat monitoring
+- `functions/index.js` - Removed OneSignal comment, simplified chat function
+
+### Verification
+- ✅ Analyzer clean for all modified files
+- ✅ No OneSignal dependencies or code remaining
+- ✅ Local notifications working for chat messages
+- ✅ User type prompt appears correctly on non-Goals pages

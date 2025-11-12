@@ -4,16 +4,48 @@ import 'package:provider/provider.dart';
 import 'switch_card.dart';
 import '../controllers/home_controller.dart';
 import '../models/appliance_model.dart';
+import '../services/goals_service.dart';
 
-class QuickControls extends StatelessWidget {
+class QuickControls extends StatefulWidget {
   final double Function(BuildContext, double) responsiveFontSize;
   const QuickControls({required this.responsiveFontSize, super.key});
+
+  @override
+  State<QuickControls> createState() => _QuickControlsState();
+}
+
+class _QuickControlsState extends State<QuickControls> {
+  final GoalsService _goalsService = GoalsService();
+  String? _userType;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadUserType();
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    // Refresh userType when page becomes visible again
+    _loadUserType();
+  }
+
+  Future<void> _loadUserType() async {
+    final result = await _goalsService.getUserType();
+    if (mounted) {
+      setState(() {
+        _userType = result.data;
+      });
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
     return Consumer<HomeController>(
       builder: (context, controller, child) {
         final appliances = controller.appliances;
+        final isUserTypeEmpty = _userType == null || _userType!.isEmpty;
 
         return Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -21,7 +53,7 @@ class QuickControls extends StatelessWidget {
             Text(
               'Quick Controls',
               style: TextStyle(
-                fontSize: responsiveFontSize(context, 20),
+                fontSize: widget.responsiveFontSize(context, 20),
                 fontWeight: FontWeight.bold,
                 color: Theme.of(context).textTheme.bodyLarge?.color,
               ),
@@ -31,7 +63,12 @@ class QuickControls extends StatelessWidget {
               Row(
                 children: [
                   Expanded(
-                    child: _buildDeviceCard(context, appliances[0], controller),
+                    child: _buildDeviceCard(
+                      context,
+                      appliances[0],
+                      controller,
+                      isUserTypeEmpty,
+                    ),
                   ),
                   SizedBox(width: Insets.sm),
                   Expanded(
@@ -41,6 +78,7 @@ class QuickControls extends StatelessWidget {
                               context,
                               appliances[1],
                               controller,
+                              isUserTypeEmpty,
                             )
                             : const SizedBox(),
                   ),
@@ -56,6 +94,7 @@ class QuickControls extends StatelessWidget {
                               context,
                               appliances[2],
                               controller,
+                              isUserTypeEmpty,
                             )
                             : const SizedBox(),
                   ),
@@ -67,6 +106,7 @@ class QuickControls extends StatelessWidget {
                               context,
                               appliances[3],
                               controller,
+                              isUserTypeEmpty,
                             )
                             : const SizedBox(),
                   ),
@@ -87,6 +127,7 @@ class QuickControls extends StatelessWidget {
     BuildContext context,
     ApplianceModel appliance,
     HomeController controller,
+    bool isUserTypeEmpty,
   ) {
     // Use dynamic rate from Firestore (admin_settings/system_config/powerRate)
     final cost = appliance.formatCost(controller.currentRate);
@@ -99,7 +140,12 @@ class QuickControls extends StatelessWidget {
       label: 'Cost',
       cost: cost,
       timerText: timerText,
-      onToggle: (value) => controller.toggleAppliance(appliance.id, value),
+      enabled: !isUserTypeEmpty,
+      onToggle: (value) {
+        if (!isUserTypeEmpty) {
+          controller.toggleAppliance(appliance.id, value);
+        }
+      },
     );
   }
 

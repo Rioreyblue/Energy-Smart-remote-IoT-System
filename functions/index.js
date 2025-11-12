@@ -32,9 +32,6 @@ async function getUserFcmTokens(userId) {
 }
 
 /**
- * Helper to send OneSignal notification via REST API.
- */
-/**
  * Daily aggregation function - runs at 23:59 every day
  * Aggregates daily usage from Realtime DB to Firestore
  */

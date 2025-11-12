@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:animated_bottom_navigation_bar/animated_bottom_navigation_bar.dart';
 import 'package:exercise_app/constants/constant.dart';
 import 'package:exercise_app/pages/goals/goals_page.dart';
@@ -12,6 +13,8 @@ import 'widgets/theme_switch_button.dart';
 import 'widgets/app_drawer.dart';
 import 'services/user_status_service.dart';
 import 'components/suspended_account_dialog.dart';
+import 'components/user_type_prompt_dialog.dart';
+import 'services/goals_service.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -21,11 +24,16 @@ class HomeScreen extends StatefulWidget {
 }
 
 class _HomeScreenState extends State<HomeScreen> {
-  int _currentIndex = 0; 
+  int _currentIndex = 0;
   bool _isSuspendedDialogShown = false;
+  bool _isUserTypeDialogShown = false;
+  bool _isCheckingUserType = false;
+  bool _userTypePromptAcknowledged = false;
 
   // Cache pages to avoid recreating them
   late final List<Widget> _pages;
+  final GoalsService _goalsService = GoalsService();
+  Timer? _userTypeCheckTimer;
 
   @override
   void initState() {
@@ -37,6 +45,12 @@ class _HomeScreenState extends State<HomeScreen> {
       GoalsPage(),
       SettingsPage(),
     ];
+  }
+
+  @override
+  void dispose() {
+    _userTypeCheckTimer?.cancel();
+    super.dispose();
   }
 
   @override
@@ -107,6 +121,15 @@ class _HomeScreenState extends State<HomeScreen> {
             final navigator = Navigator.of(context, rootNavigator: true);
             if (navigator.canPop()) {
               navigator.pop();
+            }
+          }
+
+          if (!statusService.isSuspended) {
+            // If on Goals page, check if userType was set and dismiss dialog
+            if (_currentIndex == 2) {
+              _checkAndDismissDialogIfUserTypeSet();
+            } else {
+              _maybePromptUserType();
             }
           }
         });
@@ -210,16 +233,122 @@ class _HomeScreenState extends State<HomeScreen> {
                   colors: [AppColor.accentGreen, AppColor.lowConsumption],
                 ),
                 activeIndex: _currentIndex,
-                onTap: (index) {
-                  setState(() {
-                    _currentIndex = index;
-                  });
-                },
+                onTap: _onTabSelected,
               ),
             ),
           ),
         ),
       ),
     );
+  }
+
+  Future<void> _checkAndDismissDialogIfUserTypeSet() async {
+    if (!_isUserTypeDialogShown || _isCheckingUserType) return;
+
+    _isCheckingUserType = true;
+    final result = await _goalsService.getUserType();
+    _isCheckingUserType = false;
+
+    if (!mounted) return;
+    if (!result.isSuccess) {
+      return;
+    }
+
+    final userType = result.data;
+    // If userType is now set, dismiss the dialog
+    if (userType != null && userType.isNotEmpty) {
+      if (_isUserTypeDialogShown) {
+        Navigator.of(context, rootNavigator: true).pop();
+        _isUserTypeDialogShown = false;
+        _userTypePromptAcknowledged = false;
+      }
+    }
+  }
+
+  Future<void> _maybePromptUserType() async {
+    if (_isUserTypeDialogShown || _isCheckingUserType) return;
+
+    _isCheckingUserType = true;
+    final result = await _goalsService.getUserType();
+    _isCheckingUserType = false;
+
+    if (!mounted) return;
+    if (!result.isSuccess) {
+      return;
+    }
+
+    final userType = result.data;
+    if (userType != null && userType.isNotEmpty) {
+      _userTypePromptAcknowledged = false;
+      return;
+    }
+
+    if (_currentIndex == 2) {
+      return;
+    }
+
+    if (_userTypePromptAcknowledged) {
+      return;
+    }
+
+    _isUserTypeDialogShown = true;
+    await UserTypePromptDialog.show(
+      context,
+      onProceed: () {
+        _userTypePromptAcknowledged = true;
+        Navigator.of(context, rootNavigator: true).pop();
+        context.go('/home?tab=2');
+      },
+    );
+    _isUserTypeDialogShown = false;
+
+    if (mounted) {
+      Future.microtask(_maybePromptUserType);
+    }
+  }
+
+  void _onTabSelected(int index) {
+    setState(() {
+      _currentIndex = index;
+    });
+
+    // If navigating to Goals page, dismiss the dialog if it's showing
+    if (index == 2) {
+      if (_isUserTypeDialogShown) {
+        Navigator.of(context, rootNavigator: true).pop();
+        _isUserTypeDialogShown = false;
+      }
+      // Start periodic check for userType when on Goals page
+      _startUserTypeCheckTimer();
+      return;
+    }
+
+    // Stop timer when leaving Goals page
+    _userTypeCheckTimer?.cancel();
+    _userTypeCheckTimer = null;
+
+    // Reset acknowledgment flag when leaving Goals page
+    // so dialog can reappear if userType is still empty
+    _userTypePromptAcknowledged = false;
+
+    // Check for user type prompt on other pages
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) {
+        _maybePromptUserType();
+      }
+    });
+  }
+
+  void _startUserTypeCheckTimer() {
+    _userTypeCheckTimer?.cancel();
+    _userTypeCheckTimer = Timer.periodic(const Duration(milliseconds: 500), (
+      timer,
+    ) {
+      if (!mounted || _currentIndex != 2) {
+        timer.cancel();
+        return;
+      }
+      _checkAndDismissDialogIfUserTypeSet();
+    });
   }
 }
