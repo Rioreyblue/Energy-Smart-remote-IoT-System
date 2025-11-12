@@ -8,6 +8,8 @@ import '../models/chat_message_v2.dart';
 import '../models/chat_thread.dart';
 import '../utils/app_logger.dart';
 import 'cloudinary_service.dart';
+import 'notification_service.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 /// Service for managing chat functionality
 class ChatService extends ChangeNotifier {
@@ -18,6 +20,8 @@ class ChatService extends ChangeNotifier {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
   final FirebaseAuth _auth = FirebaseAuth.instance;
   final Uuid _uuid = const Uuid();
+  final NotificationService _notificationService = NotificationService();
+  static const String _kChatLastAlertPrefix = 'chat_last_alert_';
 
   // Stream subscriptions
   StreamSubscription<QuerySnapshot>? _messagesSubscription;
@@ -33,6 +37,7 @@ class ChatService extends ChangeNotifier {
   final Map<String, String?> _userEmailCache = {};
   final CloudinaryService _cloudinaryService = CloudinaryService();
   String? _defaultAdminId;
+  bool _initialMessagesLoaded = false;
 
   // Getters
   String? get currentChatId => _currentChatId;
@@ -107,29 +112,59 @@ class ChatService extends ChangeNotifier {
   /// Find existing conversation or create new one
   Future<void> _findOrCreateConversation(String userId) async {
     try {
-      // Look for existing conversation
-      final query =
+      // Prefer conversation that already has clientId set
+      final clientQuery =
           await _firestore
               .collection('chats')
-              .where('participants', arrayContains: userId)
-              .where('status', isEqualTo: 'active')
-              .orderBy('lastMessageTime', descending: true)
+              .where('clientId', isEqualTo: userId)
               .limit(1)
               .get();
 
-      if (query.docs.isNotEmpty) {
-        // Use existing conversation
-        final doc = query.docs.first;
-        _currentChatId = doc.id;
-        _currentConversation = ChatThread.fromMap(doc.id, doc.data());
-        await _ensureConversationMetadata(_currentConversation!, userId);
+      if (clientQuery.docs.isNotEmpty) {
+        final doc = clientQuery.docs.first;
+        await _useExistingConversation(doc.id, doc.data(), userId);
         AppLogger.i(
-          '[ChatService] ✅ [ChatService] Found existing conversation: $_currentChatId',
+          '[ChatService] ✅ Found existing conversation by clientId: $_currentChatId',
         );
-      } else {
-        // Create new conversation
-        await _createNewConversation(userId);
+        return;
       }
+
+      // Check deterministic support document id in case it was previously created
+      final deterministicRef = _firestore
+          .collection('chats')
+          .doc('support_$userId');
+      final deterministicSnap = await deterministicRef.get();
+      if (deterministicSnap.exists) {
+        await _useExistingConversation(
+          deterministicSnap.id,
+          deterministicSnap.data() as Map<String, dynamic>,
+          userId,
+        );
+        AppLogger.i(
+          '[ChatService] ✅ Found deterministic support conversation: $_currentChatId',
+        );
+        return;
+      }
+
+      // Legacy fallback: look for conversations without clientId but containing the user
+      final legacyQuery =
+          await _firestore
+              .collection('chats')
+              .where('participants', arrayContains: userId)
+              .limit(1)
+              .get();
+
+      if (legacyQuery.docs.isNotEmpty) {
+        final doc = legacyQuery.docs.first;
+        await _useExistingConversation(doc.id, doc.data(), userId);
+        AppLogger.i(
+          '[ChatService] ✅ Found legacy conversation: $_currentChatId',
+        );
+        return;
+      }
+
+      // Create new conversation if none found
+      await _createNewConversation(userId);
     } catch (e) {
       AppLogger.e(
         '[ChatService] ❌ [ChatService] Error finding conversation: $e',
@@ -140,8 +175,9 @@ class ChatService extends ChangeNotifier {
 
   /// Get user photoUrl from Firestore (cached)
   Future<String?> getUserPhotoUrl(String userId) async {
-    if (_userPhotoUrlCache.containsKey(userId))
+    if (_userPhotoUrlCache.containsKey(userId)) {
       return _userPhotoUrlCache[userId];
+    }
     try {
       final doc = await _firestore.collection('users').doc(userId).get();
       String? url;
@@ -291,17 +327,17 @@ class ChatService extends ChangeNotifier {
   /// Create new conversation
   Future<void> _createNewConversation(String userId) async {
     try {
-      final chatId = _uuid.v4();
+      final chatRef = _firestore.collection('chats').doc('support_$userId');
       final now = Timestamp.now();
 
       final userName = await _resolveDisplayName(userId);
       final userEmail = await getUserEmail(userId);
       final userPhotoUrl = await getUserPhotoUrl(userId);
 
-      // Create conversation document
       final conversation = ChatThread(
-        id: chatId,
+        id: chatRef.id,
         participants: [userId, _defaultAdminId!],
+        clientId: userId,
         createdAt: now,
         lastMessageTime: now,
         lastMessage: null,
@@ -315,16 +351,13 @@ class ChatService extends ChangeNotifier {
         userPhotoUrl: userPhotoUrl,
       );
 
-      await _firestore
-          .collection('chats')
-          .doc(chatId)
-          .set(conversation.toMap());
+      await chatRef.set(conversation.toMap());
 
-      _currentChatId = chatId;
+      _currentChatId = chatRef.id;
       _currentConversation = conversation;
 
       AppLogger.i(
-        '[ChatService] ✅ [ChatService] Created new conversation: $chatId',
+        '[ChatService] ✅ [ChatService] Created new conversation: ${chatRef.id}',
       );
     } catch (e) {
       AppLogger.e(
@@ -347,7 +380,12 @@ class ChatService extends ChangeNotifier {
         conversation.userPhotoUrl == null ||
         conversation.userPhotoUrl!.trim().isEmpty;
 
-    if (!missingName && !missingEmail && !missingPhoto) return;
+    final missingClientId =
+        conversation.clientId == null || conversation.clientId!.trim().isEmpty;
+
+    if (!missingName && !missingEmail && !missingPhoto && !missingClientId) {
+      return;
+    }
 
     final updates = <String, dynamic>{};
 
@@ -370,6 +408,10 @@ class ChatService extends ChangeNotifier {
       if (resolvedPhoto != null && resolvedPhoto.trim().isNotEmpty) {
         updates['userPhotoUrl'] = resolvedPhoto.trim();
       }
+    }
+
+    if (missingClientId) {
+      updates['clientId'] = userId;
     }
 
     if (updates.isEmpty) return;
@@ -424,10 +466,30 @@ class ChatService extends ChangeNotifier {
     return updates;
   }
 
+  Future<void> _useExistingConversation(
+    String docId,
+    Map<String, dynamic> rawData,
+    String userId,
+  ) async {
+    final data = Map<String, dynamic>.from(rawData);
+    final missingClientId =
+        (data['clientId'] as String?)?.trim().isEmpty ?? true;
+    if (missingClientId) {
+      data['clientId'] = userId;
+      await _firestore.collection('chats').doc(docId).update({
+        'clientId': userId,
+      });
+    }
+    _currentChatId = docId;
+    _currentConversation = ChatThread.fromMap(docId, data);
+    await _ensureConversationMetadata(_currentConversation!, userId);
+  }
+
   /// Start listening to messages
   void _startListeningToMessages() {
     if (_currentChatId == null) return;
 
+    _initialMessagesLoaded = false;
     _messagesSubscription = _firestore
         .collection('chats')
         .doc(_currentChatId!)
@@ -437,14 +499,65 @@ class ChatService extends ChangeNotifier {
         .snapshots()
         .listen(
           (snapshot) {
+            final currentUserId = _auth.currentUser?.uid;
             _messages =
                 snapshot.docs
                     .map((doc) => ChatMessageV2.fromMap(doc.id, doc.data()))
                     .toList();
             notifyListeners();
-            print(
-              '📨 [ChatService] Messages updated: ${_messages.length} messages',
+            AppLogger.d(
+              '[ChatService] Messages updated: ${_messages.length} messages',
             );
+
+            if (!_initialMessagesLoaded) {
+              _initialMessagesLoaded = true;
+              return;
+            }
+
+            for (final change in snapshot.docChanges) {
+              if (change.type != DocumentChangeType.added) continue;
+
+              final data = change.doc.data();
+              if (data == null) continue;
+
+              final senderId = data['senderId'] as String?;
+              if (senderId == null || senderId == currentUserId) continue;
+
+              final metadata = data['metadata'] as Map<String, dynamic>?;
+              if (metadata != null && metadata['unsent'] == true) continue;
+
+              if ((data['type'] as String?) == 'system') continue;
+
+              String senderName =
+                  (data['senderName'] as String?)?.trim().isNotEmpty == true
+                      ? (data['senderName'] as String).trim()
+                      : 'Support';
+
+              final messageType =
+                  (data['type'] ?? 'text').toString().toLowerCase();
+              String preview = (data['text'] ?? '').toString().trim();
+              if (messageType == 'image') {
+                preview = '📷 Image';
+              } else if (messageType == 'file') {
+                preview = '📎 Attachment';
+              } else if (preview.isEmpty) {
+                preview = 'You have a new message';
+              } else if (preview.length > 80) {
+                preview = '${preview.substring(0, 80)}…';
+              }
+
+              final chatId =
+                  _currentChatId ??
+                  change.doc.reference.parent.parent?.id ??
+                  '';
+
+              _notificationService.showChatMessageNotification(
+                senderName: senderName,
+                messagePreview: preview,
+                chatId: chatId,
+                messageId: change.doc.id,
+              );
+            }
           },
           onError: (error) {
             _error = error.toString();
@@ -466,6 +579,7 @@ class ChatService extends ChangeNotifier {
     }
 
     try {
+      final senderId = user.uid;
       final messageId = _uuid.v4();
       final now = Timestamp.now();
 
@@ -476,7 +590,7 @@ class ChatService extends ChangeNotifier {
       final message = ChatMessageV2(
         id: messageId,
         chatId: _currentChatId!,
-        senderId: user.uid,
+        senderId: senderId,
         senderName: senderName,
         senderPhotoUrl: senderPhoto,
         senderEmail: senderEmail,
@@ -497,18 +611,59 @@ class ChatService extends ChangeNotifier {
       final unreadUpdates = await _buildUnreadCountUpdates(user.uid);
 
       // Update conversation with last message and unread counters
-      final Map<String, Object?> conversationUpdate = {
-        'lastMessage': text,
-        'lastMessageTime': now,
-        'status': 'active',
-        'updatedAt': FieldValue.serverTimestamp(),
-      };
-      conversationUpdate.addAll(unreadUpdates);
-
-      await _firestore
+      final conversationRef = _firestore
           .collection('chats')
-          .doc(_currentChatId!)
-          .update(conversationUpdate);
+          .doc(_currentChatId!);
+      await _firestore.runTransaction((transaction) async {
+        final snapshot = await transaction.get(conversationRef);
+        final snapshotData = snapshot.data() ?? {};
+        final serverUnread = Map<String, dynamic>.from(
+          (snapshotData['unreadCount'] as Map?) ?? {},
+        );
+
+        final Map<String, Object?> conversationUpdate = {
+          'lastMessage': text,
+          'lastMessageTime': now,
+          'status': 'active',
+          'updatedAt': FieldValue.serverTimestamp(),
+        };
+
+        unreadUpdates.forEach((key, value) {
+          if (!key.startsWith('unreadCount.')) {
+            conversationUpdate[key] = value;
+            return;
+          }
+
+          final participantId = key.substring('unreadCount.'.length);
+          if (value is num) {
+            conversationUpdate[key] = value;
+            return;
+          }
+
+          final current = (serverUnread[participantId] as num?) ?? 0;
+          if (participantId == senderId) {
+            conversationUpdate[key] = 0;
+          } else {
+            conversationUpdate[key] = current + 1;
+          }
+        });
+
+        transaction.update(conversationRef, conversationUpdate);
+      });
+
+      try {
+        final updatedSnapshot = await conversationRef.get();
+        if (updatedSnapshot.exists) {
+          _currentConversation = ChatThread.fromMap(
+            updatedSnapshot.id,
+            updatedSnapshot.data()!,
+          );
+        }
+      } catch (e) {
+        AppLogger.w(
+          '[ChatService] ⚠️ Unable to refresh conversation cache: $e',
+        );
+      }
 
       AppLogger.i('[ChatService] ✅ [ChatService] Message sent: $text');
       return true;
@@ -533,6 +688,7 @@ class ChatService extends ChangeNotifier {
     }
 
     try {
+      final senderId = user.uid;
       // Upload image to Cloudinary
       final imageUrl = await _cloudinaryService.uploadImage(
         imageFile,
@@ -556,7 +712,7 @@ class ChatService extends ChangeNotifier {
       final message = ChatMessageV2(
         id: messageId,
         chatId: _currentChatId!,
-        senderId: user.uid,
+        senderId: senderId,
         senderName: senderName,
         senderPhotoUrl: senderPhoto,
         senderEmail: senderEmail,
@@ -584,18 +740,59 @@ class ChatService extends ChangeNotifier {
       final unreadUpdates = await _buildUnreadCountUpdates(user.uid);
 
       // Update conversation with last message and unread counters
-      final Map<String, Object?> conversationUpdate = {
-        'lastMessage': '📷 Image',
-        'lastMessageTime': now,
-        'status': 'active',
-        'updatedAt': FieldValue.serverTimestamp(),
-      };
-      conversationUpdate.addAll(unreadUpdates);
-
-      await _firestore
+      final conversationRef = _firestore
           .collection('chats')
-          .doc(_currentChatId!)
-          .update(conversationUpdate);
+          .doc(_currentChatId!);
+      await _firestore.runTransaction((transaction) async {
+        final snapshot = await transaction.get(conversationRef);
+        final snapshotData = snapshot.data() ?? {};
+        final serverUnread = Map<String, dynamic>.from(
+          (snapshotData['unreadCount'] as Map?) ?? {},
+        );
+
+        final Map<String, Object?> conversationUpdate = {
+          'lastMessage': '📷 Image',
+          'lastMessageTime': now,
+          'status': 'active',
+          'updatedAt': FieldValue.serverTimestamp(),
+        };
+
+        unreadUpdates.forEach((key, value) {
+          if (!key.startsWith('unreadCount.')) {
+            conversationUpdate[key] = value;
+            return;
+          }
+
+          final participantId = key.substring('unreadCount.'.length);
+          if (value is num) {
+            conversationUpdate[key] = value;
+            return;
+          }
+
+          final current = (serverUnread[participantId] as num?) ?? 0;
+          if (participantId == senderId) {
+            conversationUpdate[key] = 0;
+          } else {
+            conversationUpdate[key] = current + 1;
+          }
+        });
+
+        transaction.update(conversationRef, conversationUpdate);
+      });
+
+      try {
+        final updatedSnapshot = await conversationRef.get();
+        if (updatedSnapshot.exists) {
+          _currentConversation = ChatThread.fromMap(
+            updatedSnapshot.id,
+            updatedSnapshot.data()!,
+          );
+        }
+      } catch (e) {
+        AppLogger.w(
+          '[ChatService] ⚠️ Unable to refresh conversation cache: $e',
+        );
+      }
 
       AppLogger.i('[ChatService] ✅ Image message sent: $imageUrl');
       return true;
@@ -619,6 +816,8 @@ class ChatService extends ChangeNotifier {
         'updatedAt': FieldValue.serverTimestamp(),
         'unreadCount.$userId': 0,
       });
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.remove('$_kChatLastAlertPrefix${_currentChatId!}');
     } catch (e) {
       AppLogger.e('[ChatService] ❌ [ChatService] Error marking as read: $e');
     }

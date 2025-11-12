@@ -11,9 +11,21 @@ import 'package:workmanager/workmanager.dart';
 import '../firebase_options.dart';
 import '../utils/app_logger.dart';
 import 'threshold_alert_service.dart';
+import 'notification_service.dart';
 
 const String kThresholdMonitorTask = 'threshold_monitor_task';
 const String _kThresholdMonitorUnique = 'threshold_monitor_unique';
+const String kChatMonitorTask = 'chat_monitor_task';
+const String _kChatMonitorUnique = 'chat_monitor_unique';
+const String _kChatLastAlertPrefix = 'chat_last_alert_';
+
+bool _workmanagerInitialized = false;
+
+Future<void> _ensureWorkmanagerInitialized() async {
+  if (_workmanagerInitialized) return;
+  await Workmanager().initialize(thresholdMonitorCallbackDispatcher);
+  _workmanagerInitialized = true;
+}
 
 @pragma('vm:entry-point')
 void thresholdMonitorCallbackDispatcher() {
@@ -22,7 +34,20 @@ void thresholdMonitorCallbackDispatcher() {
     await Firebase.initializeApp(
       options: DefaultFirebaseOptions.currentPlatform,
     );
-    await ThresholdMonitorTask().run();
+    try {
+      switch (taskName) {
+        case kThresholdMonitorTask:
+          await ThresholdMonitorTask().run();
+          break;
+        case kChatMonitorTask:
+          await ChatMonitorTask().run();
+          break;
+        default:
+          AppLogger.w('[BackgroundTask] Unknown task received: $taskName');
+      }
+    } catch (e) {
+      AppLogger.e('[BackgroundTask] Error executing $taskName: $e');
+    }
     return true;
   });
 }
@@ -36,7 +61,7 @@ class ThresholdMonitorService {
 
   Future<void> initialize() async {
     if (_initialized) return;
-    await Workmanager().initialize(thresholdMonitorCallbackDispatcher);
+    await _ensureWorkmanagerInitialized();
     _initialized = true;
   }
 
@@ -171,6 +196,147 @@ class ThresholdMonitorTask {
       }
     } catch (e) {
       AppLogger.e('[ThresholdMonitorTask] Error running background check: $e');
+    }
+  }
+}
+
+class ChatMonitorService {
+  ChatMonitorService._();
+
+  static final ChatMonitorService instance = ChatMonitorService._();
+
+  bool _initialized = false;
+
+  Future<void> initialize() async {
+    if (_initialized) return;
+    await _ensureWorkmanagerInitialized();
+    _initialized = true;
+  }
+
+  Future<void> registerBackgroundTask() async {
+    await initialize();
+
+    await Workmanager().registerPeriodicTask(
+      _kChatMonitorUnique,
+      kChatMonitorTask,
+      frequency: const Duration(minutes: 30),
+      initialDelay: const Duration(minutes: 10),
+      existingWorkPolicy: ExistingPeriodicWorkPolicy.update,
+      constraints: Constraints(networkType: NetworkType.connected),
+    );
+    AppLogger.i('[ChatMonitorService] Background chat task registered.');
+  }
+
+  Future<void> cancelBackgroundTask() async {
+    if (!_initialized) return;
+    await Workmanager().cancelByUniqueName(_kChatMonitorUnique);
+    AppLogger.i('[ChatMonitorService] Background chat task cancelled.');
+  }
+}
+
+class ChatMonitorTask {
+  final FirebaseAuth _auth = FirebaseAuth.instance;
+  final FirebaseFirestore _firestore = FirebaseFirestore.instance;
+
+  Future<void> run() async {
+    try {
+      final user = _auth.currentUser;
+      if (user == null) {
+        AppLogger.w('[ChatMonitorTask] No authenticated user, skipping.');
+        return;
+      }
+
+      final prefs = await SharedPreferences.getInstance();
+      final query =
+          await _firestore
+              .collection('chats')
+              .where('participants', arrayContains: user.uid)
+              .limit(5)
+              .get();
+
+      if (query.docs.isEmpty) {
+        return;
+      }
+
+      final notificationService = NotificationService();
+      await notificationService.ensureInitializedForBackground();
+
+      for (final doc in query.docs) {
+        final data = doc.data();
+        final unread =
+            ((data['unreadCount'] as Map?)?[user.uid] as num?)?.toInt() ?? 0;
+        if (unread <= 0) continue;
+
+        final chatId = doc.id;
+        final lastMessageTime =
+            (data['lastMessageTime'] as Timestamp?)?.toDate();
+        final lastAlertKey = '$_kChatLastAlertPrefix$chatId';
+        final lastAlertMs = prefs.getInt(lastAlertKey);
+        if (lastMessageTime != null &&
+            lastAlertMs != null &&
+            lastMessageTime.millisecondsSinceEpoch <= lastAlertMs) {
+          continue;
+        }
+
+        final messageSnap =
+            await _firestore
+                .collection('chats')
+                .doc(chatId)
+                .collection('messages')
+                .orderBy('timestamp', descending: true)
+                .limit(1)
+                .get();
+
+        if (messageSnap.docs.isEmpty) continue;
+        final messageData = messageSnap.docs.first.data();
+        final senderId = messageData['senderId'] as String?;
+        if (senderId == null || senderId == user.uid) continue;
+
+        final metadata = messageData['metadata'] as Map<String, dynamic>?;
+        if (metadata != null && metadata['unsent'] == true) continue;
+        if ((messageData['type'] as String?) == 'system') continue;
+
+        String senderName =
+            (messageData['senderName'] as String?)?.trim() ?? '';
+        if (senderName.isEmpty) {
+          senderName = 'Support';
+        }
+
+        final messageType =
+            (messageData['type'] ?? 'text').toString().toLowerCase();
+        String preview = (messageData['text'] ?? '').toString().trim();
+        if (messageType == 'image') {
+          preview = '📷 Image';
+        } else if (messageType == 'file') {
+          final attachments = messageData['attachments'];
+          if (attachments is List && attachments.isNotEmpty) {
+            final first = attachments.first;
+            final name =
+                first is Map<String, dynamic> ? first['name'] as String? : null;
+            preview = '📎 ${name ?? 'Attachment'}';
+          } else {
+            preview = '📎 Attachment';
+          }
+        } else if (preview.isEmpty) {
+          preview = 'You have a new message';
+        } else if (preview.length > 80) {
+          preview = '${preview.substring(0, 80)}…';
+        }
+
+        await notificationService.showChatMessageNotification(
+          senderName: senderName,
+          messagePreview: preview,
+          chatId: chatId,
+          messageId: messageSnap.docs.first.id,
+        );
+
+        final timestampToStore =
+            lastMessageTime?.millisecondsSinceEpoch ??
+            DateTime.now().millisecondsSinceEpoch;
+        await prefs.setInt(lastAlertKey, timestampToStore);
+      }
+    } catch (e) {
+      AppLogger.e('[ChatMonitorTask] Error running background chat check: $e');
     }
   }
 }

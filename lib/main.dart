@@ -37,6 +37,7 @@ import 'services/profile_service.dart';
 import 'services/chat_service.dart';
 import 'services/push_notification_manager.dart';
 import 'services/notification_service.dart';
+import 'services/chat_notification_service.dart';
 import 'services/threshold_monitor_service.dart';
 import 'controllers/chat_notification_controller.dart';
 import 'utils/app_router.dart';
@@ -373,9 +374,12 @@ void main() async {
   appRouter = _createRouter();
 
   await PushNotificationManager.instance.initialize();
-  await NotificationService().initializeOneSignal();
+  await NotificationService().initialize();
+  await ChatNotificationService().initialize();
   await ThresholdMonitorService.instance.initialize();
   await ThresholdMonitorService.instance.registerBackgroundTask();
+  await ChatMonitorService.instance.initialize();
+  await ChatMonitorService.instance.registerBackgroundTask();
 
   // Run the app
   runApp(const MyApp());

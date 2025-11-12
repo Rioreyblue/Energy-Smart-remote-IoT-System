@@ -60,11 +60,6 @@ class HomeController extends ChangeNotifier {
         return;
       }
 
-      // Notification service is initialized in main.dart
-      // OneSignal is now used for all notifications
-      // Refresh player ID when user logs in
-      await _notificationService.refreshPlayerId();
-
       // Check if monthly reset is needed
       final needsReset = await _energyOverviewService.checkMonthlyReset();
       if (needsReset) {

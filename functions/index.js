@@ -1,6 +1,5 @@
 const functions = require('firebase-functions');
 const admin = require('firebase-admin');
-const axios = require('axios');
 
 // Initialize Firebase Admin SDK
 admin.initializeApp();
@@ -8,145 +7,33 @@ admin.initializeApp();
 const db = admin.firestore();
 const rtdb = admin.database();
 
-// OneSignal Configuration
-const ONESIGNAL_APP_ID = '741790af-bbf1-4480-9c92-18352b884ea3';
-// Note: REST API Key should be stored in Firebase Functions config
-// Set it using: firebase functions:config:set onesignal.rest_api_key="YOUR_KEY"
-const DEFAULT_ONESIGNAL_REST_API_KEY =
-  'os_v2_app_oqlzbl536fcibhesda2sxccouom43csqdcaulf4m3xigbvnnujd5lckbdgwz74v4jafijp2muzpjx6y5mkvvbo6nnac7cfcazacz6va';
-const ONESIGNAL_REST_API_KEY =
-  functions.config().onesignal?.rest_api_key ||
-  process.env.ONESIGNAL_REST_API_KEY ||
-  DEFAULT_ONESIGNAL_REST_API_KEY;
-const HAS_ONESIGNAL_REST_API_KEY = Boolean(ONESIGNAL_REST_API_KEY);
-
-if (
-  !functions.config().onesignal?.rest_api_key &&
-  !process.env.ONESIGNAL_REST_API_KEY
-) {
-  console.warn(
-    '[OneSignal] Using fallback REST API key. Configure firebase functions:config:set onesignal.rest_api_key="YOUR_KEY" for production.',
-  );
-}
-
 /**
- * Helper function to send OneSignal notification via REST API
+ * Get FCM tokens for a user.
  */
-async function sendOneSignalNotification(
-  playerIds,
-  title,
-  body,
-  data = {},
-  options = {},
-) {
-  if (!HAS_ONESIGNAL_REST_API_KEY || playerIds.length === 0) {
-    console.log('OneSignal REST API Key not configured or no player IDs');
-    return;
-  }
-
+async function getUserFcmTokens(userId) {
   try {
-    const notificationPayload = {
-      app_id: ONESIGNAL_APP_ID,
-      include_player_ids: playerIds,
-      headings: { en: title },
-      contents: { en: body },
-      data,
-      android_channel_id: options.androidChannelId || 'budget_alerts',
-      priority: options.priority ?? 10,
-    };
-
-    if (options.buttons && options.buttons.length > 0) {
-      notificationPayload.buttons = options.buttons;
-    }
-    if (options.url) {
-      notificationPayload.url = options.url;
-    }
-    if (options.smallIcon) {
-      notificationPayload.small_icon = options.smallIcon;
-    }
-    if (options.iosSound) {
-      notificationPayload.ios_sound = options.iosSound;
-    }
-    if (options.androidSound) {
-      notificationPayload.android_sound = options.androidSound;
-    }
-    if (options.iosCategory) {
-      notificationPayload.ios_category = options.iosCategory;
-    }
-    if (options.mutableContent) {
-      notificationPayload.mutable_content = options.mutableContent;
-    }
-    if (options.badge !== undefined) {
-      notificationPayload.ios_badgeCount = options.badge;
-    }
-
-    const response = await axios.post(
-      'https://onesignal.com/api/v1/notifications',
-      notificationPayload,
-      {
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Basic ${ONESIGNAL_REST_API_KEY}`,
-        },
-      }
-    );
-    console.log('OneSignal notification sent:', response.data);
-    return response.data;
-  } catch (error) {
-    console.error('Error sending OneSignal notification:', error.response?.data || error.message);
-    throw error;
-  }
-}
-
-/**
- * Get OneSignal player IDs for a user
- */
-async function getUserOneSignalPlayerIds(userId) {
-  try {
-    const playersSnapshot = await db
+    const snapshot = await db
       .collection('users')
       .doc(userId)
-      .collection('onesignalPlayers')
+      .collection('fcmTokens')
       .get();
 
-    return playersSnapshot.docs.map(doc => doc.data().playerId);
+    if (snapshot.empty) {
+      return [];
+    }
+
+    return snapshot.docs
+      .map(doc => doc.data().token || doc.id)
+      .filter(token => typeof token === 'string' && token.trim().length > 0);
   } catch (error) {
-    console.error(`Error getting player IDs for user ${userId}:`, error);
+    console.error(`Error getting FCM tokens for user ${userId}:`, error);
     return [];
   }
 }
 
 /**
- * Get OneSignal player IDs for any participant (user or admin)
+ * Helper to send OneSignal notification via REST API.
  */
-async function getChatParticipantPlayerIds(participantId) {
-  const userPlayerIds = await getUserOneSignalPlayerIds(participantId);
-  if (userPlayerIds.length > 0) {
-    return userPlayerIds;
-  }
-
-  try {
-    const adminPlayersSnapshot = await db
-      .collection('admins')
-      .doc(participantId)
-      .collection('onesignalPlayers')
-      .get();
-
-    if (!adminPlayersSnapshot.empty) {
-      return adminPlayersSnapshot.docs
-        .map(doc => doc.data().playerId)
-        .filter(Boolean);
-    }
-  } catch (error) {
-    console.error(
-      `Error getting player IDs for admin ${participantId}:`,
-      error,
-    );
-  }
-
-  return [];
-}
-
 /**
  * Daily aggregation function - runs at 23:59 every day
  * Aggregates daily usage from Realtime DB to Firestore
@@ -352,29 +239,54 @@ exports.thresholdNotification = functions.firestore
           return null;
         }
         
-        // Get user's OneSignal player IDs
-        const playerIds = await getUserOneSignalPlayerIds(userId);
-        
-        if (playerIds.length === 0) {
-          console.log(`No OneSignal player IDs found for user ${userId}`);
-          return null;
-        }
-        
         // Calculate percentage
         const percentage = Math.round((data.totalCost / target.target_cost) * 100);
-        
-        // Send OneSignal notification
-        await sendOneSignalNotification(
-          playerIds,
-          'Energy Alert!',
-          `You've reached ${percentage}% of your daily energy target (₱${data.totalCost.toFixed(2)})`,
-          {
+        const tokens = await getUserFcmTokens(userId);
+
+        if (tokens.length === 0) {
+          console.log(`No FCM tokens registered for user ${userId}`);
+          return null;
+        }
+
+        const nowIso = new Date().toISOString();
+
+        const message = {
+          tokens,
+          data: {
             type: 'threshold_reached',
-            currentCost: data.totalCost.toString(),
-            targetCost: target.target_cost.toString(),
+            current_cost: data.totalCost.toFixed(2),
+            target_cost: target.target_cost.toFixed(2),
             threshold: threshold.toString(),
             percentage: percentage.toString(),
-          }
+            timestamp: nowIso,
+          },
+          android: {
+            priority: 'high',
+            notification: {
+              channel_id: 'threshold_alerts',
+              sound: 'default',
+            },
+          },
+          apns: {
+            headers: { 'apns-priority': '10' },
+            payload: {
+              aps: {
+                sound: 'default',
+                category: 'threshold_alerts',
+                'content-available': 1,
+              },
+            },
+          },
+          notification: {
+            title: 'Energy Alert!',
+            body: `You've reached ${percentage}% of your daily energy target (₱${data.totalCost.toFixed(2)})`,
+          },
+        };
+
+        const thresholdResponse =
+          await admin.messaging().sendEachForMulticast(message);
+        console.log(
+          `Threshold FCM notification dispatched for user ${userId}: success=${thresholdResponse.successCount}, failure=${thresholdResponse.failureCount}`,
         );
         
         // Mark notification as sent
@@ -765,29 +677,52 @@ exports.rateUpdateNotification = functions.firestore
     try {
       // Get all users
       const usersSnapshot = await db.collection('users').get();
-      
+
       for (const userDoc of usersSnapshot.docs) {
         const userId = userDoc.id;
-        
-        // Get user's OneSignal player IDs
-        const playerIds = await getUserOneSignalPlayerIds(userId);
-        
-        if (playerIds.length === 0) {
+        const tokens = await getUserFcmTokens(userId);
+
+        if (tokens.length === 0) {
+          console.log(`No FCM tokens registered for user ${userId}`);
           continue;
         }
-        
-        // Send OneSignal notification
-        await sendOneSignalNotification(
-          playerIds,
-          'Rate Update',
-          `Power rate updated to ₱${after.rate_per_kwh}/kWh`,
-          {
+
+        const message = {
+          tokens,
+          data: {
             type: 'rate_update',
-            oldRate: before.rate_per_kwh.toString(),
-            newRate: after.rate_per_kwh.toString(),
-          }
+            old_rate: before.rate_per_kwh.toString(),
+            new_rate: after.rate_per_kwh.toString(),
+            timestamp: new Date().toISOString(),
+          },
+          android: {
+            priority: 'high',
+            notification: {
+              channel_id: 'appliance_status',
+              sound: 'default',
+            },
+          },
+          apns: {
+            headers: { 'apns-priority': '10' },
+            payload: {
+              aps: {
+                sound: 'default',
+              },
+            },
+          },
+          notification: {
+            title: 'Rate Update',
+            body: `Power rate updated to ₱${after.rate_per_kwh}/kWh`,
+          },
+        };
+
+        const response = await admin
+          .messaging()
+          .sendEachForMulticast(message);
+        console.log(
+          `Rate update FCM notification for user ${userId}: success=${response.successCount}, failure=${response.failureCount}`,
         );
-        
+
         // Add to recent activity
         await db.collection('users').doc(userId)
           .collection('recent_activity').add({
@@ -802,7 +737,7 @@ exports.rateUpdateNotification = functions.firestore
             userId: userId,
           });
       }
-      
+
       console.log('Rate update notifications sent to all users');
       return null;
     } catch (error) {
@@ -824,143 +759,12 @@ exports.sendChatNotification = functions.firestore
 
     try {
       const senderId = messageData.senderId;
-      
-      // Get chat conversation
-      const chatDoc = await db.collection('chats').doc(chatId).get();
-      if (!chatDoc.exists) {
-        console.log(`Chat ${chatId} not found`);
-        return null;
-      }
-
-      const chatData = chatDoc.data();
-      const participants = chatData.participants || [];
-
-      const recipientIds = participants.filter(
-        participantId => participantId !== senderId,
-      );
-
-      if (recipientIds.length === 0) {
-        console.log('No recipients found for chat notification');
-        return null;
-      }
-
-      // Get sender name
-      let senderName =
-        (messageData.senderName && messageData.senderName.trim()) ||
-        null;
-      if (!senderName && messageData.senderEmail) {
-        senderName = messageData.senderEmail.split('@')[0];
-      }
-      try {
-        if (!senderName) {
-          const adminDoc = await db.collection('admins').doc(senderId).get();
-          if (adminDoc.exists) {
-            const adminData = adminDoc.data() || {};
-            senderName =
-              adminData.displayName ||
-              adminData.name ||
-              adminData.email?.split('@')[0] ||
-              'Support Team';
-          }
-        }
-        if (!senderName) {
-          const senderDoc = await db.collection('users').doc(senderId).get();
-          if (senderDoc.exists) {
-            const senderUserData = senderDoc.data();
-            senderName =
-              senderUserData.name ||
-              senderUserData.firstName ||
-              senderUserData.email?.split('@')[0] ||
-              'User';
-          }
-        }
-      } catch (e) {
-        console.log('Error getting sender name:', e);
-      }
-      if (!senderName) {
-        senderName = 'Support';
-      }
-
-      // Skip notifications for unsent/system messages
-      if (messageData.metadata?.unsent) {
-        console.log(`Skipping notification for unsent message ${messageId}`);
-        return null;
-      }
-
-      if (messageData.type === 'system') {
-        console.log(`Skipping system message ${messageId}`);
-        return null;
-      }
-
-      // Get recipients' OneSignal player IDs
-      const recipientPlayerIdsArrays = await Promise.all(
-        recipientIds.map(getChatParticipantPlayerIds),
-      );
-      const playerIds = [
-        ...new Set(
-          recipientPlayerIdsArrays
-            .flat()
-            .filter(id => typeof id === 'string' && id.trim().length > 0),
-        ),
-      ];
-
-      if (playerIds.length === 0) {
-        console.log(
-          `No OneSignal player IDs found for recipients of chat ${chatId}`,
-        );
-        return null;
-      }
-
-      // Prepare message preview (first 100 chars)
-      const messageType = (messageData.type || 'text').toLowerCase();
-      const messageText = (messageData.text || '').trim();
-      let messagePreview = messageText;
-
-      if (!messagePreview) {
-        if (messageType === 'image') {
-          messagePreview = '📷 Image';
-        } else if (messageType === 'file') {
-          const firstAttachment = Array.isArray(messageData.attachments)
-            ? messageData.attachments.find(att => att && att.name)
-            : null;
-          const fileName = firstAttachment?.name || 'File';
-          messagePreview = `📎 ${fileName}`;
-        } else {
-          messagePreview = 'You have a new message';
-        }
-      } else if (messagePreview.length > 100) {
-        messagePreview = `${messagePreview.substring(0, 100)}...`;
-      }
-
-      // Format timestamp
-      const timestamp = messageData.timestamp?.toDate() || new Date();
-
-      // Send OneSignal notification
-      await sendOneSignalNotification(
-        playerIds,
-        senderName,
-        messagePreview,
-        {
-          type: 'chat',
-          chatId: chatId,
-          senderId: senderId,
-          messageId: messageId,
-          timestamp: timestamp.toISOString(),
-        },
-        {
-          androidChannelId: 'chat_messages',
-          androidSound: 'default',
-          iosSound: 'default',
-          iosCategory: 'chat_messages',
-        },
-      );
-
       console.log(
-        `Chat notification sent to ${recipientIds.join(', ')} for chat ${chatId}`,
+        `Chat message ${messageId} created in chat ${chatId} by ${senderId}. Local notifications handled on device.`,
       );
       return null;
     } catch (error) {
-      console.error('Error in chat notification:', error);
+      console.error('Error in chat notification trigger:', error);
       throw error;
     }
   });

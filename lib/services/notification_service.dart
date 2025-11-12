@@ -1,71 +1,29 @@
 import 'dart:async';
 import 'dart:typed_data';
 import 'package:flutter/material.dart';
-import 'package:onesignal_flutter/onesignal_flutter.dart';
 import 'package:awesome_notifications/awesome_notifications.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'dart:io' show Platform;
 import '../utils/app_logger.dart';
 import '../utils/app_router.dart';
-import '../config/onesignal_config.dart';
 import 'threshold_alert_service.dart';
 
-/// Service for managing OneSignal push notifications and local notifications
+/// Service for managing local notifications.
 class NotificationService {
   final FirebaseAuth _auth = FirebaseAuth.instance;
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
-
-  static const String _onesignalAppId = OneSignalConfig.appId;
-  String? _oneSignalPlayerId;
-  bool _isInitialized = false;
+  static bool _isInitialized = false;
 
   String get _userId => _auth.currentUser?.uid ?? '';
-  String? get playerId => _oneSignalPlayerId;
 
-  /// Initialize OneSignal with App ID and FCM integration
-  Future<void> initializeOneSignal() async {
+  /// Initialize local notification channels.
+  Future<void> initialize({bool requestPermission = true}) async {
     if (_isInitialized) return;
 
     try {
-      // Initialize OneSignal
-      OneSignal.Debug.setLogLevel(OSLogLevel.verbose);
-      OneSignal.initialize(_onesignalAppId);
-
-      // Request permission
-      await requestPermissions();
-
-      // Wait a bit for player ID to be available after initialization
-      await Future.delayed(const Duration(seconds: 2));
-
-      // Get player ID (subscription ID)
-      final subscriptionId = OneSignal.User.pushSubscription.id;
-      if (subscriptionId != null && subscriptionId.isNotEmpty) {
-        _oneSignalPlayerId = subscriptionId;
-        if (_userId.isNotEmpty) {
-          await _storePlayerId(_oneSignalPlayerId!);
-        }
-        AppLogger.i(
-          '[NotificationService] Player ID obtained: $_oneSignalPlayerId',
-        );
-      } else {
-        AppLogger.w('[NotificationService] Player ID not available yet');
+      if (requestPermission) {
+        await requestPermissions();
       }
-
-      // Set up notification opened handler (handles both tap and action button clicks)
-      OneSignal.Notifications.addClickListener((event) {
-        _handleNotificationTap(event);
-      });
-
-      // Listen for player ID changes
-      OneSignal.User.pushSubscription.addObserver((state) {
-        if (state.current.id != null) {
-          _oneSignalPlayerId = state.current.id;
-          if (_userId.isNotEmpty) {
-            _storePlayerId(_oneSignalPlayerId!);
-          }
-        }
-      });
 
       // Initialize Awesome Notifications for local non-critical alerts
       await _initializeLocalNotifications();
@@ -79,9 +37,15 @@ class NotificationService {
       );
 
       _isInitialized = true;
-      AppLogger.i('[NotificationService] OneSignal initialized successfully');
+      AppLogger.i('[NotificationService] Local notifications initialized');
     } catch (e) {
-      AppLogger.e('[NotificationService] Error initializing OneSignal: $e');
+      AppLogger.e('[NotificationService] Error initializing notifications: $e');
+    }
+  }
+
+  Future<void> ensureInitializedForBackground() async {
+    if (!_isInitialized) {
+      await initialize(requestPermission: false);
     }
   }
 
@@ -97,6 +61,16 @@ class NotificationService {
         playSound: false,
         enableVibration: false,
         importance: NotificationImportance.Low,
+      ),
+      NotificationChannel(
+        channelKey: 'chat_messages',
+        channelName: 'Chat Messages',
+        channelDescription: 'Notifications for support chat conversations',
+        defaultColor: const Color(0xFF3498DB),
+        ledColor: const Color(0xFF3498DB),
+        playSound: true,
+        enableVibration: true,
+        importance: NotificationImportance.High,
       ),
       NotificationChannel(
         channelKey: 'budget_alerts',
@@ -145,99 +119,15 @@ class NotificationService {
   /// Request notification permissions
   Future<void> requestPermissions() async {
     try {
-      // Request OneSignal permissions
-      final hasPermission = await OneSignal.Notifications.requestPermission(
-        true,
-      );
-
       final localAllowed = await AwesomeNotifications().isNotificationAllowed();
       if (!localAllowed) {
         await AwesomeNotifications().requestPermissionToSendNotifications(
           channelKey: 'threshold_alerts',
         );
       }
-
-      if (hasPermission) {
-        AppLogger.i('[NotificationService] Notification permission granted');
-
-        // Get player ID after permission is granted (with delay)
-        await Future.delayed(const Duration(seconds: 2));
-        final subscriptionId = OneSignal.User.pushSubscription.id;
-        if (subscriptionId != null &&
-            subscriptionId.isNotEmpty &&
-            _oneSignalPlayerId != subscriptionId) {
-          _oneSignalPlayerId = subscriptionId;
-          if (_userId.isNotEmpty) {
-            await _storePlayerId(_oneSignalPlayerId!);
-          }
-          AppLogger.i(
-            '[NotificationService] Player ID updated: $_oneSignalPlayerId',
-          );
-        }
-      } else {
-        AppLogger.w('[NotificationService] Notification permission denied');
-      }
+      AppLogger.i('[NotificationService] Notification permission granted');
     } catch (e) {
       AppLogger.e('[NotificationService] Error requesting permissions: $e');
-    }
-  }
-
-  /// Store OneSignal player ID in Firestore
-  Future<void> _storePlayerId(String playerId) async {
-    if (_userId.isEmpty) return;
-
-    try {
-      final platform = await _getPlatform();
-      await _firestore
-          .collection('users')
-          .doc(_userId)
-          .collection('onesignalPlayers')
-          .doc(playerId)
-          .set({
-            'playerId': playerId,
-            'platform': platform,
-            'createdAt': FieldValue.serverTimestamp(),
-            'lastUsed': FieldValue.serverTimestamp(),
-          }, SetOptions(merge: true));
-
-      AppLogger.i('[NotificationService] Player ID stored: $playerId');
-    } catch (e) {
-      AppLogger.e('[NotificationService] Error storing player ID: $e');
-    }
-  }
-
-  /// Get platform name
-  Future<String> _getPlatform() async {
-    try {
-      if (Platform.isAndroid) {
-        return 'android';
-      } else if (Platform.isIOS) {
-        return 'ios';
-      }
-      return 'unknown';
-    } catch (e) {
-      return 'unknown';
-    }
-  }
-
-  /// Refresh player ID (call this when user logs in)
-  Future<void> refreshPlayerId() async {
-    if (_userId.isEmpty) return;
-
-    try {
-      await Future.delayed(const Duration(seconds: 1));
-      final subscriptionId = OneSignal.User.pushSubscription.id;
-      if (subscriptionId != null &&
-          subscriptionId.isNotEmpty &&
-          _oneSignalPlayerId != subscriptionId) {
-        _oneSignalPlayerId = subscriptionId;
-        await _storePlayerId(_oneSignalPlayerId!);
-        AppLogger.i(
-          '[NotificationService] Player ID refreshed: $_oneSignalPlayerId',
-        );
-      }
-    } catch (e) {
-      AppLogger.e('[NotificationService] Error refreshing player ID: $e');
     }
   }
 
@@ -263,6 +153,7 @@ class NotificationService {
 
       // Handle budget alert actions
       if (type == 'budget_alert') {
+        final buttonKey = receivedAction.buttonKeyPressed;
         // Get instance to call non-static methods
         final instance = NotificationService();
 
@@ -298,12 +189,20 @@ class NotificationService {
 
       if (type == 'threshold_alert') {
         final button = receivedAction.buttonKeyPressed;
-        if (button == null || button.isEmpty) {
+        if (button.isEmpty) {
           AppLogger.i(
             '[NotificationService] Threshold alert tapped - navigating to goals tab.',
           );
           appRouter.go('/home?tab=2');
         }
+        return;
+      }
+
+      if (type == 'chat_message') {
+        AppLogger.i(
+          '[NotificationService] Chat notification tapped - navigating to support chat.',
+        );
+        appRouter.go('/supportChat');
         return;
       }
     } catch (e) {
@@ -343,78 +242,6 @@ class NotificationService {
     );
   }
 
-  /// Handle OneSignal notification tap event
-  void _handleNotificationTap(OSNotificationClickEvent event) {
-    try {
-      final additionalData = event.notification.additionalData;
-      if (additionalData == null) return;
-
-      final type = additionalData['type'] as String?;
-      final result = event.result;
-
-      // Get actionId - it might be in result.actionId or result.actionId
-      final actionId = result.actionId;
-
-      AppLogger.i(
-        '[NotificationService] Notification action: type=$type, actionId=$actionId, data=$additionalData',
-      );
-
-      // Handle action button clicks for budget alerts
-      if (type == 'budget_alert') {
-        final alertId = additionalData['alertId'] as String?;
-
-        // Check if an action button was clicked
-        if (actionId != null && actionId.isNotEmpty && actionId != 'default') {
-          // Action button was clicked
-          if (actionId == 'proceed') {
-            _handleProceedAction(alertId);
-          } else if (actionId == 'dismiss') {
-            _handleDismissAction(alertId);
-          }
-          return; // Don't navigate when action button is clicked
-        } else {
-          // Notification body was tapped (no action button) - navigate to Goals page
-          AppLogger.i(
-            '[NotificationService] Budget alert notification tapped - navigate to Goals',
-          );
-          appRouter.go('/home?tab=2');
-          return;
-        }
-      }
-
-      // Navigate based on notification type using GoRouter
-      try {
-        switch (type) {
-          case 'chat':
-            final chatId = additionalData['chatId'] as String?;
-            AppLogger.i('[NotificationService] Navigate to chat: $chatId');
-            appRouter.go('/supportChat');
-            break;
-          case 'threshold_reached':
-            AppLogger.i('[NotificationService] Navigate to goals');
-            appRouter.go('/home?tab=2');
-            break;
-          case 'rate_update':
-            AppLogger.i(
-              '[NotificationService] Rate update notification tapped',
-            );
-            appRouter.go('/home');
-            break;
-          default:
-            AppLogger.i(
-              '[NotificationService] Unknown notification type: $type',
-            );
-            appRouter.go('/home');
-            break;
-        }
-      } catch (e) {
-        AppLogger.e('[NotificationService] Error navigating: $e');
-      }
-    } catch (e) {
-      AppLogger.e('[NotificationService] Error handling notification tap: $e');
-    }
-  }
-
   /// Handle "Proceed" action button click
   Future<void> _handleProceedAction(String? alertId) async {
     try {
@@ -450,17 +277,15 @@ class NotificationService {
     await ThresholdAlertService.instance.resetState();
   }
 
-  /// Send critical alert (remote OneSignal notification)
-  /// Note: This is typically called from Cloud Functions via REST API
-  /// This method is kept for local testing/debugging
+  /// Send critical alert (remote push notification placeholder).
+  /// Note: Critical remote alerts are dispatched by backend services.
   Future<void> sendCriticalAlert({
     required String title,
     required String body,
     Map<String, dynamic>? data,
   }) async {
     try {
-      // Critical alerts should be sent via Cloud Functions using OneSignal REST API
-      // This method is for local testing only
+      // This method is for local testing only.
       AppLogger.i('[NotificationService] Critical alert would be sent: $title');
     } catch (e) {
       AppLogger.e('[NotificationService] Error sending critical alert: $e');
@@ -508,6 +333,33 @@ class NotificationService {
     }
   }
 
+  /// Show chat message notification (local - indicator style).
+  Future<void> showChatMessageNotification({
+    required String senderName,
+    required String messagePreview,
+    required String chatId,
+    String? messageId,
+  }) async {
+    try {
+      await AwesomeNotifications().createNotification(
+        content: NotificationContent(
+          id: DateTime.now().millisecondsSinceEpoch.remainder(100000),
+          channelKey: 'chat_messages',
+          title: senderName,
+          body: messagePreview,
+          category: NotificationCategory.Message,
+          payload: {
+            'type': 'chat_message',
+            'chatId': chatId,
+            if (messageId != null) 'messageId': messageId,
+          },
+        ),
+      );
+    } catch (e) {
+      AppLogger.e('[NotificationService] Error showing chat notification: $e');
+    }
+  }
+
   /// Send goal achievement notification (local - non-critical)
   Future<void> sendGoalAchievementNotification({
     required String achievementType,
@@ -533,10 +385,10 @@ class NotificationService {
       String message;
       if (totalCost <= targetCost * 0.8) {
         message =
-            'Great job! You used ₱${totalCost.toStringAsFixed(2)} (${costPercentage}% of target)';
+            'Great job! You used ₱${totalCost.toStringAsFixed(2)} ($costPercentage% of target)';
       } else if (totalCost <= targetCost) {
         message =
-            'Good progress! You used ₱${totalCost.toStringAsFixed(2)} (${costPercentage}% of target)';
+            'Good progress! You used ₱${totalCost.toStringAsFixed(2)} ($costPercentage% of target)';
       } else {
         message =
             'You exceeded your target by ₱${(totalCost - targetCost).toStringAsFixed(2)}';
@@ -558,9 +410,8 @@ class NotificationService {
     required double targetValue,
   }) async {
     try {
-      // Critical alerts should be sent via Cloud Functions using OneSignal REST API
       AppLogger.w(
-        '[NotificationService] Threshold notification should be sent via Cloud Functions',
+        '[NotificationService] Threshold notification should be sent via backend service.',
       );
     } catch (e) {
       AppLogger.e(
@@ -682,9 +533,7 @@ class NotificationService {
   /// Check notification permissions
   Future<bool> areNotificationsEnabled() async {
     try {
-      // Check if user has opted in by checking if subscription ID exists
-      final subscriptionId = OneSignal.User.pushSubscription.id;
-      return subscriptionId != null && subscriptionId.isNotEmpty;
+      return await AwesomeNotifications().isNotificationAllowed();
     } catch (e) {
       AppLogger.e('[NotificationService] Error checking permissions: $e');
       return false;
@@ -694,7 +543,10 @@ class NotificationService {
   /// Open notification settings
   Future<void> openNotificationSettings() async {
     try {
-      await OneSignal.Notifications.requestPermission(true);
+      final allowed = await AwesomeNotifications().isNotificationAllowed();
+      if (!allowed) {
+        await AwesomeNotifications().requestPermissionToSendNotifications();
+      }
     } catch (e) {
       AppLogger.e('[NotificationService] Error opening settings: $e');
     }
@@ -741,28 +593,8 @@ class NotificationService {
   }
 
   /// Legacy method name for backward compatibility
-  @Deprecated('Use initializeOneSignal instead')
+  @Deprecated('Use initialize instead')
   Future<void> configureAwesomeNotifications() async {
-    await initializeOneSignal();
-  }
-
-  /// Set user tags for targeted notifications
-  Future<void> setUserTags(Map<String, String> tags) async {
-    try {
-      await OneSignal.User.addTags(tags);
-      AppLogger.i('[NotificationService] User tags set: $tags');
-    } catch (e) {
-      AppLogger.e('[NotificationService] Error setting user tags: $e');
-    }
-  }
-
-  /// Send tags to OneSignal (for segmentation)
-  Future<void> sendTags(Map<String, dynamic> tags) async {
-    try {
-      final stringTags = tags.map((k, v) => MapEntry(k, v.toString()));
-      await OneSignal.User.addTags(stringTags);
-    } catch (e) {
-      AppLogger.e('[NotificationService] Error sending tags: $e');
-    }
+    await initialize();
   }
 }

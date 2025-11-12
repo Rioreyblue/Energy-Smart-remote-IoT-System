@@ -3,6 +3,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 class ChatThread {
   final String id;
   final List<String> participants;
+  final String? clientId;
   final String? lastMessage;
   final Timestamp lastMessageTime;
   final Timestamp createdAt;
@@ -21,6 +22,7 @@ class ChatThread {
     required this.participants,
     required this.lastMessageTime,
     required this.createdAt,
+    this.clientId,
     this.lastMessage,
     this.unreadCount = const {},
     this.subject,
@@ -37,6 +39,7 @@ class ChatThread {
     return ChatThread(
       id: id,
       participants: List<String>.from(data['participants'] ?? const <String>[]),
+      clientId: data['clientId'],
       lastMessage: data['lastMessage'],
       lastMessageTime:
           (data['lastMessageTime'] as Timestamp? ?? Timestamp.now()),
@@ -64,6 +67,7 @@ class ChatThread {
   Map<String, dynamic> toMap() {
     return {
       'participants': participants,
+      'clientId': clientId,
       'lastMessage': lastMessage,
       'lastMessageTime': lastMessageTime,
       'createdAt': createdAt,

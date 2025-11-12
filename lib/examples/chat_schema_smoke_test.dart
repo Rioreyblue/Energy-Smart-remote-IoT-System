@@ -47,23 +47,13 @@ class _ChatSchemaSmokeTestState extends State<ChatSchemaSmokeTest> {
     final userPhotoUrl = user.photoURL;
 
     // Find or create chat
-    final q =
-        await _db
-            .collection('chats')
-            .where('participants', arrayContains: user.uid)
-            .where('status', isEqualTo: 'active')
-            .orderBy('lastMessageTime', descending: true)
-            .limit(1)
-            .get();
+    final chatRef = _db.collection('chats').doc('support_${user.uid}');
+    final chatDoc = await chatRef.get();
 
-    final chatRef =
-        q.docs.isNotEmpty
-            ? q.docs.first.reference
-            : _db.collection('chats').doc();
-
-    if (q.docs.isEmpty) {
+    if (!chatDoc.exists) {
       await chatRef.set({
         'participants': [user.uid, adminId],
+        'clientId': user.uid,
         'lastMessage': null,
         'lastMessageTime': FieldValue.serverTimestamp(),
         'createdAt': FieldValue.serverTimestamp(),
@@ -77,6 +67,12 @@ class _ChatSchemaSmokeTestState extends State<ChatSchemaSmokeTest> {
         'userEmail': userEmail,
         'userPhotoUrl': userPhotoUrl,
       });
+    } else {
+      await chatRef.set({
+        'participants': [user.uid, adminId],
+        'clientId': user.uid,
+        'assignedAdminId': adminId,
+      }, SetOptions(merge: true));
     }
 
     final chatId = chatRef.id;

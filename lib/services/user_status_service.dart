@@ -3,6 +3,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_database/firebase_database.dart';
 import 'package:flutter/foundation.dart';
 import '../utils/app_logger.dart';
+import 'device_control_service.dart';
 
 /// Service for monitoring user account status in Firebase Realtime Database
 /// Listens to users/{uid}/status for account suspension status
@@ -88,6 +89,7 @@ class UserStatusService extends ChangeNotifier {
 
   /// Handle status update from Firebase Realtime Database
   void _handleStatusUpdate(DatabaseEvent event) {
+    final previousStatus = _status?.toLowerCase();
     try {
       if (event.snapshot.exists) {
         final statusValue = event.snapshot.value;
@@ -113,6 +115,14 @@ class UserStatusService extends ChangeNotifier {
       _error = null;
       _isLoading = false;
       notifyListeners();
+
+      final currentStatus = _status?.toLowerCase();
+      if (currentStatus == 'suspended' && previousStatus != 'suspended') {
+        AppLogger.i(
+          '[UserStatusService] Account suspended, disabling controllers.',
+        );
+        unawaited(DeviceControlService().turnOffAllControllers());
+      }
     } catch (e) {
       AppLogger.e('[UserStatusService] Error handling status update: $e');
       _error = 'Failed to parse status: ${e.toString()}';

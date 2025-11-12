@@ -45,10 +45,5 @@
     <true/>
     <key>UIApplicationSupportsIndirectInputEvents</key>
     <true/>
-    <!-- OneSignal Configuration -->
-    <key>OneSignal_APNS_Environment</key>
-    <string>development</string>
-    <key>OneSignal_AppID</key>
-    <string>741790af-bbf1-4480-9c92-18352b884ea3</string>
   </dict>
 </plist>

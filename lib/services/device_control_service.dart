@@ -185,6 +185,46 @@ class DeviceControlService {
     }
   }
 
+  /// Turn off all appliances/controllers for the current user.
+  Future<void> turnOffAllControllers() async {
+    if (_userId.isEmpty) return;
+
+    try {
+      final snapshot = await _database.ref('users/$_userId/appliances').get();
+      if (!snapshot.exists) return;
+
+      final Map<dynamic, dynamic> data = Map<dynamic, dynamic>.from(
+        snapshot.value as Map,
+      );
+
+      final futures = <Future<void>>[];
+      data.forEach((key, value) {
+        final applianceData = Map<String, dynamic>.from(value);
+        final isOn = applianceData['isOn'] == true;
+        if (isOn) {
+          futures.add(_applianceService.toggleAppliance(key as String, false));
+        }
+      });
+
+      if (futures.isNotEmpty) {
+        await Future.wait(futures);
+      }
+
+      // Update local cache to reflect new state
+      data.forEach((key, value) {
+        final applianceId = key as String;
+        final cached = _applianceCache[applianceId];
+        if (cached != null && cached.isOn) {
+          _applianceCache[applianceId] = cached.copyWith(isOn: false);
+        }
+      });
+
+      AppLogger.i('[DeviceControlService] All controllers turned off.');
+    } catch (e) {
+      AppLogger.e('[DeviceControlService] Error turning off controllers: $e');
+    }
+  }
+
   /// Get current appliances from cache (sorted)
   List<ApplianceModel> getCurrentAppliances() {
     final appliances = _applianceCache.values.toList();
