@@ -210,9 +210,10 @@ class _VerificationPageState extends State<VerificationPage> {
         ),
         title: Text(
           'Verify ${widget.verificationType == 'email' ? 'Email' : 'Phone'}',
-          style: ResponsiveText.title(
-            context,
-          ).copyWith(color: AppColor.primary, fontWeight: FontWeight.bold),
+          style: ResponsiveText.title(context).copyWith(
+            color: theme.textTheme.bodyLarge?.color ?? AppColor.primary,
+            fontWeight: FontWeight.bold,
+          ),
         ),
         centerTitle: true,
       ),
@@ -237,6 +238,11 @@ class _VerificationPageState extends State<VerificationPage> {
   }
 
   Widget _buildHeader(BuildContext context) {
+    final theme = Theme.of(context);
+    final textColor = theme.textTheme.bodyLarge?.color ?? AppColor.primary;
+    final secondaryTextColor =
+        theme.textTheme.bodyMedium?.color ?? AppColor.textSecondary;
+
     return Column(
       children: [
         // Icon
@@ -270,7 +276,7 @@ class _VerificationPageState extends State<VerificationPage> {
           'Verify Your ${widget.verificationType == 'email' ? 'Email' : 'Phone'}',
           style: ResponsiveText.headline(
             context,
-          ).copyWith(color: AppColor.primary, fontWeight: FontWeight.bold),
+          ).copyWith(color: textColor, fontWeight: FontWeight.bold),
           textAlign: TextAlign.center,
         ),
 
@@ -283,7 +289,7 @@ class _VerificationPageState extends State<VerificationPage> {
               : 'We sent a verification code to\n${widget.contactInfo}\n\nPlease enter the 6-digit code you received via SMS.',
           style: ResponsiveText.body(
             context,
-          ).copyWith(color: AppColor.textSecondary),
+          ).copyWith(color: secondaryTextColor),
           textAlign: TextAlign.center,
         ),
       ],
@@ -302,7 +308,10 @@ class _VerificationPageState extends State<VerificationPage> {
         borderRadius: BorderRadius.circular(20),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withAlpha(26),
+            color:
+                isDark
+                    ? Colors.black.withAlpha(77)
+                    : Colors.black.withAlpha(26),
             blurRadius: 20,
             offset: const Offset(0, 10),
           ),
@@ -323,15 +332,23 @@ class _VerificationPageState extends State<VerificationPage> {
 
             if (_verificationAttempts > 0) ...[
               SizedBox(height: Insets.md),
-              Text(
-                'Attempts: $_verificationAttempts/5',
-                style: ResponsiveText.caption(context).copyWith(
-                  color:
-                      _verificationAttempts >= 5
-                          ? Colors.red
-                          : AppColor.textSecondary,
-                ),
-                textAlign: TextAlign.center,
+              Builder(
+                builder: (context) {
+                  final theme = Theme.of(context);
+                  final secondaryTextColor =
+                      theme.textTheme.bodyMedium?.color ??
+                      AppColor.textSecondary;
+                  return Text(
+                    'Attempts: $_verificationAttempts/5',
+                    style: ResponsiveText.caption(context).copyWith(
+                      color:
+                          _verificationAttempts >= 5
+                              ? Colors.red
+                              : secondaryTextColor,
+                    ),
+                    textAlign: TextAlign.center,
+                  );
+                },
               ),
             ],
           ],
@@ -355,97 +372,123 @@ class _VerificationPageState extends State<VerificationPage> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Container(
-          padding: EdgeInsets.all(Insets.md),
-          decoration: BoxDecoration(
-            color: AppColor.accentGreen.withAlpha(20),
-            borderRadius: BorderRadius.circular(16),
-          ),
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Icon(Iconsax.info_circle, color: AppColor.accentGreen),
-              SizedBox(width: Insets.sm),
-              Expanded(
-                child: Text(
-                  'SmsChef sends the OTP using your registered device. '
-                  'Make sure it stays online so the code can arrive.',
-                  style: ResponsiveText.body(context).copyWith(
-                    color: AppColor.primary,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
+        Builder(
+          builder: (context) {
+            final theme = Theme.of(context);
+            final textColor =
+                theme.textTheme.bodyLarge?.color ?? AppColor.primary;
+            return Container(
+              padding: EdgeInsets.all(Insets.md),
+              decoration: BoxDecoration(
+                color: AppColor.accentGreen.withAlpha(20),
+                borderRadius: BorderRadius.circular(16),
               ),
-            ],
-          ),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Icon(Iconsax.info_circle, color: AppColor.accentGreen),
+                  SizedBox(width: Insets.sm),
+                  Expanded(
+                    child: Text(
+                      'SmsChef sends the OTP using your registered device. '
+                      'Make sure it stays online so the code can arrive.',
+                      style: ResponsiveText.body(
+                        context,
+                      ).copyWith(color: textColor, fontWeight: FontWeight.w600),
+                    ),
+                  ),
+                ],
+              ),
+            );
+          },
         ),
         SizedBox(height: Insets.lg),
-        Text(
-          'Code sent to',
-          style: ResponsiveText.label(
-            context,
-          ).copyWith(fontWeight: FontWeight.w600),
-        ),
-        SizedBox(height: Insets.sm),
-        Container(
-          padding: EdgeInsets.symmetric(
-            horizontal: Insets.md,
-            vertical: Insets.sm,
-          ),
-          decoration: BoxDecoration(
-            border: Border.all(color: AppColor.primary.withAlpha(90)),
-            borderRadius: BorderRadius.circular(16),
-          ),
-          child: Row(
-            children: [
-              Icon(Iconsax.mobile, color: AppColor.primary),
-              SizedBox(width: Insets.sm),
-              Expanded(
-                child: Text(
-                  phoneAuth.phoneNumber?.isNotEmpty == true
-                      ? phoneAuth.phoneNumber!
-                      : (phoneDisplay ?? 'No number on file'),
-                  style: ResponsiveText.body(context).copyWith(
-                    color: AppColor.primary,
-                    fontWeight: FontWeight.w600,
+        Builder(
+          builder: (context) {
+            final theme = Theme.of(context);
+            final textColor =
+                theme.textTheme.bodyLarge?.color ?? AppColor.primary;
+            return Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Code sent to',
+                  style: ResponsiveText.label(
+                    context,
+                  ).copyWith(fontWeight: FontWeight.w600, color: textColor),
+                ),
+                SizedBox(height: Insets.sm),
+                Container(
+                  padding: EdgeInsets.symmetric(
+                    horizontal: Insets.md,
+                    vertical: Insets.sm,
+                  ),
+                  decoration: BoxDecoration(
+                    border: Border.all(color: (textColor).withAlpha(90)),
+                    borderRadius: BorderRadius.circular(16),
+                  ),
+                  child: Row(
+                    children: [
+                      Icon(Iconsax.mobile, color: textColor),
+                      SizedBox(width: Insets.sm),
+                      Expanded(
+                        child: Text(
+                          phoneAuth.phoneNumber?.isNotEmpty == true
+                              ? phoneAuth.phoneNumber!
+                              : (phoneDisplay ?? 'No number on file'),
+                          style: ResponsiveText.body(context).copyWith(
+                            color: textColor,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ),
+                    ],
                   ),
                 ),
-              ),
-            ],
-          ),
+              ],
+            );
+          },
         ),
         SizedBox(height: Insets.md),
         _buildOTPInput(context, phoneAuth),
         SizedBox(height: Insets.lg),
         _buildVerifyButton(context, phoneAuth),
         SizedBox(height: Insets.md),
-        Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: [
-            TextButton(
-              onPressed: () => context.go('/sms'),
-              child: Text(
-                'Use a different number',
-                style: ResponsiveText.body(context).copyWith(
-                  color: AppColor.primary,
-                  fontWeight: FontWeight.w600,
+        Builder(
+          builder: (context) {
+            final theme = Theme.of(context);
+            final textColor =
+                theme.textTheme.bodyLarge?.color ?? AppColor.primary;
+            final secondaryTextColor =
+                theme.textTheme.bodyMedium?.color ?? AppColor.textSecondary;
+            return Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                TextButton(
+                  onPressed: () => context.go('/sms'),
+                  child: Text(
+                    'Use a different number',
+                    style: ResponsiveText.body(
+                      context,
+                    ).copyWith(color: textColor, fontWeight: FontWeight.w600),
+                  ),
                 ),
-              ),
-            ),
-            TextButton(
-              onPressed: hasSentCode && canResend ? _resendCode : null,
-              child: Text(
-                resendLabel,
-                style: ResponsiveText.body(context).copyWith(
-                  color:
-                      hasSentCode && canResend
-                          ? AppColor.accentGreen
-                          : AppColor.textSecondary,
-                  fontWeight: FontWeight.w600,
+                TextButton(
+                  onPressed: hasSentCode && canResend ? _resendCode : null,
+                  child: Text(
+                    resendLabel,
+                    style: ResponsiveText.body(context).copyWith(
+                      color:
+                          hasSentCode && canResend
+                              ? AppColor.accentGreen
+                              : secondaryTextColor,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
                 ),
-              ),
-            ),
-          ],
+              ],
+            );
+          },
         ),
         if (_statusMessage != null) ...[
           SizedBox(height: Insets.lg),
@@ -470,6 +513,12 @@ class _VerificationPageState extends State<VerificationPage> {
   }
 
   Widget _buildOTPInput(BuildContext context, PhoneAuthService phoneAuth) {
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+    final textColor = theme.textTheme.bodyLarge?.color ?? AppColor.primary;
+    final secondaryTextColor =
+        theme.textTheme.bodyMedium?.color ?? AppColor.textSecondary;
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -477,7 +526,7 @@ class _VerificationPageState extends State<VerificationPage> {
           'Enter Verification Code',
           style: ResponsiveText.label(
             context,
-          ).copyWith(fontWeight: FontWeight.w600),
+          ).copyWith(fontWeight: FontWeight.w600, color: textColor),
         ),
         SizedBox(height: Insets.sm),
         PinCodeTextField(
@@ -486,16 +535,17 @@ class _VerificationPageState extends State<VerificationPage> {
           enabled: !_isLoading,
           keyboardType: TextInputType.number,
           animationType: AnimationType.fade,
+          textStyle: TextStyle(color: textColor),
           pinTheme: PinTheme(
             shape: PinCodeFieldShape.box,
             borderRadius: BorderRadius.circular(12),
             fieldHeight: 56,
             fieldWidth: 48,
-            activeFillColor: Theme.of(context).colorScheme.surface,
-            inactiveFillColor: Theme.of(context).colorScheme.surface,
-            selectedFillColor: Theme.of(context).colorScheme.surface,
+            activeFillColor: theme.colorScheme.surface,
+            inactiveFillColor: theme.colorScheme.surface,
+            selectedFillColor: theme.colorScheme.surface,
             activeColor: AppColor.accentGreen,
-            inactiveColor: AppColor.disabled,
+            inactiveColor: isDark ? Colors.grey[700]! : AppColor.disabled,
             selectedColor: AppColor.accentGreen,
           ),
           enableActiveFill: true,
@@ -518,7 +568,7 @@ class _VerificationPageState extends State<VerificationPage> {
               'Send a code from the previous step, then enter the 6-digit OTP here.',
               style: ResponsiveText.caption(
                 context,
-              ).copyWith(color: AppColor.textSecondary),
+              ).copyWith(color: secondaryTextColor),
             ),
           ),
       ],
@@ -680,10 +730,7 @@ class _VerificationPageState extends State<VerificationPage> {
 
       if (isVerified) {
         if (mounted) {
-          AppSnackbar.showSuccess(
-            context,
-            'Email verified successfully! Welcome to Energy Smart.',
-          );
+          AppSnackbar.showSuccess(context, 'Email verified successfully!');
 
           // Refresh auth state by reloading user data
           await _authService.getCurrentUserData();
@@ -691,9 +738,35 @@ class _VerificationPageState extends State<VerificationPage> {
           // Small delay to ensure auth state propagates
           await Future.delayed(const Duration(milliseconds: 300));
 
-          // Navigate to root - AuthWrapper will redirect to /home if fully verified
-          if (mounted) {
-            context.go('/');
+          // Check if phone is also verified
+          final userData = await _authService.getCurrentUserData();
+          if (userData != null && !userData.isPhoneVerified) {
+            // Phone not verified - navigate to phone verification
+            if (mounted) {
+              // Send SMS OTP automatically
+              try {
+                await _authService.sendPhoneVerificationOtp(
+                  userData.mobileNumber,
+                );
+                AppSnackbar.showInfo(
+                  context,
+                  'Please verify your phone number. OTP sent to ${userData.mobileNumber}',
+                );
+              } catch (e) {
+                AppSnackbar.showWarning(
+                  context,
+                  'Please verify your phone number. Failed to send OTP: ${e.toString()}',
+                );
+              }
+
+              // Navigate to SMS entry page
+              context.go('/sms');
+            }
+          } else {
+            // Both verified - navigate to home
+            if (mounted) {
+              context.go('/home');
+            }
           }
         }
       } else {

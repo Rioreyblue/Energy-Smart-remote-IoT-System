@@ -36,11 +36,16 @@ class _NewLoginPageState extends State<NewLoginPage> {
     );
     final dialogFormKey = GlobalKey<FormState>();
 
+    final theme = Theme.of(context);
     await showDialog(
       context: context,
       builder: (ctx) {
         return AlertDialog(
-          title: const Text('Reset password'),
+          backgroundColor: theme.colorScheme.surface,
+          title: Text(
+            'Reset password',
+            style: TextStyle(color: theme.textTheme.bodyLarge?.color),
+          ),
           content: Form(
             key: dialogFormKey,
             child: Column(
@@ -48,18 +53,30 @@ class _NewLoginPageState extends State<NewLoginPage> {
               children: [
                 Text(
                   'Enter your account email to receive a reset link.',
-                  style: ResponsiveText.body(
-                    context,
-                  ).copyWith(color: AppColor.textSecondary),
+                  style: ResponsiveText.body(context).copyWith(
+                    color:
+                        theme.textTheme.bodyMedium?.color ??
+                        AppColor.textSecondary,
+                  ),
                 ),
                 const SizedBox(height: 12),
                 TextFormField(
                   controller: resetEmailController,
                   keyboardType: TextInputType.emailAddress,
+                  style: TextStyle(color: theme.textTheme.bodyLarge?.color),
                   decoration: InputDecoration(
                     labelText: 'Email address',
                     hintText: 'you@example.com',
-                    prefixIcon: const Icon(Iconsax.sms),
+                    labelStyle: TextStyle(
+                      color: theme.textTheme.bodyMedium?.color,
+                    ),
+                    hintStyle: TextStyle(
+                      color: theme.textTheme.bodyMedium?.color,
+                    ),
+                    prefixIcon: Icon(
+                      Iconsax.sms,
+                      color: theme.textTheme.bodyMedium?.color,
+                    ),
                     border: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(12),
                     ),
@@ -81,7 +98,10 @@ class _NewLoginPageState extends State<NewLoginPage> {
           actions: [
             TextButton(
               onPressed: () => Navigator.of(ctx).pop(),
-              child: const Text('Cancel'),
+              child: Text(
+                'Cancel',
+                style: TextStyle(color: theme.textTheme.bodyMedium?.color),
+              ),
             ),
             ElevatedButton(
               onPressed: () async {
@@ -146,8 +166,32 @@ class _NewLoginPageState extends State<NewLoginPage> {
         if (isPhoneVerified) {
           await _showWelcomeAndNavigate(user);
         } else {
-          context.read<PhoneAuthService>().reset();
-          context.go('/sms');
+          // Phone not verified - send SMS OTP and navigate to SMS entry page
+          try {
+            final phoneAuthService = context.read<PhoneAuthService>();
+            phoneAuthService.reset();
+
+            // Send SMS OTP automatically for sign-in
+            await _authService.sendPhoneVerificationOtp(user.mobileNumber);
+
+            if (mounted) {
+              AppSnackbar.showInfo(
+                context,
+                'Please verify your phone number. OTP sent to ${user.mobileNumber}',
+              );
+              // Navigate to SMS entry page
+              context.go('/sms');
+            }
+          } catch (e) {
+            if (mounted) {
+              AppSnackbar.showWarning(
+                context,
+                'Please verify your phone number. Failed to send OTP: ${e.toString()}',
+              );
+              // Still navigate to SMS page so user can manually request OTP
+              context.go('/sms');
+            }
+          }
         }
       }
     } catch (e) {
@@ -188,8 +232,32 @@ class _NewLoginPageState extends State<NewLoginPage> {
         if (isPhoneVerified) {
           await _showWelcomeAndNavigate(user);
         } else {
-          context.read<PhoneAuthService>().reset();
-          context.go('/sms');
+          // Phone not verified - send SMS OTP and navigate to SMS entry page
+          try {
+            final phoneAuthService = context.read<PhoneAuthService>();
+            phoneAuthService.reset();
+
+            // Send SMS OTP automatically for Google sign-in
+            await _authService.sendPhoneVerificationOtp(user.mobileNumber);
+
+            if (mounted) {
+              AppSnackbar.showInfo(
+                context,
+                'Please verify your phone number. OTP sent to ${user.mobileNumber}',
+              );
+              // Navigate to SMS entry page
+              context.go('/sms');
+            }
+          } catch (e) {
+            if (mounted) {
+              AppSnackbar.showWarning(
+                context,
+                'Please verify your phone number. Failed to send OTP: ${e.toString()}',
+              );
+              // Still navigate to SMS page so user can manually request OTP
+              context.go('/sms');
+            }
+          }
         }
       }
     } catch (e) {
@@ -211,13 +279,19 @@ class _NewLoginPageState extends State<NewLoginPage> {
   @override
   Widget build(BuildContext context) {
     final isSmallScreen = MediaQuery.of(context).size.width < 900;
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
 
     return Scaffold(
-      body: isSmallScreen ? _buildMobileLayout() : _buildDesktopLayout(),
+      backgroundColor: theme.colorScheme.surface,
+      body:
+          isSmallScreen
+              ? _buildMobileLayout(isDark, theme)
+              : _buildDesktopLayout(isDark, theme),
     );
   }
 
-  Widget _buildDesktopLayout() {
+  Widget _buildDesktopLayout(bool isDark, ThemeData theme) {
     return Row(
       children: [
         // Left Panel - Animation & Branding
@@ -230,7 +304,7 @@ class _NewLoginPageState extends State<NewLoginPage> {
                 end: Alignment.bottomRight,
                 colors: [
                   AppColor.accentGreen.withAlpha(26),
-                  AppColor.primary.withAlpha(13),
+                  theme.colorScheme.primary.withAlpha(13),
                 ],
               ),
             ),
@@ -247,7 +321,7 @@ class _NewLoginPageState extends State<NewLoginPage> {
                       .fadeIn(duration: 600.ms)
                       .scale(delay: 100.ms, duration: 400.ms),
                   const SizedBox(height: 24),
-                  const Text(
+                  Text(
                     'EnergySmart',
                     style: TextStyle(
                       fontSize: 40,
@@ -260,7 +334,9 @@ class _NewLoginPageState extends State<NewLoginPage> {
                     'Monitor · Save · Empower',
                     style: TextStyle(
                       fontSize: 18,
-                      color: AppColor.textSecondary,
+                      color:
+                          theme.textTheme.bodyMedium?.color ??
+                          AppColor.textSecondary,
                     ),
                   ).animate().fadeIn(delay: 400.ms).slideY(begin: 0.2, end: 0),
                   const SizedBox(height: 48),
@@ -283,13 +359,13 @@ class _NewLoginPageState extends State<NewLoginPage> {
         Expanded(
           flex: 1,
           child: Container(
-            color: Theme.of(context).colorScheme.surface,
+            color: theme.colorScheme.surface,
             child: Center(
               child: SingleChildScrollView(
                 padding: const EdgeInsets.all(48),
                 child: ConstrainedBox(
                   constraints: const BoxConstraints(maxWidth: 500),
-                  child: _buildLoginCard(),
+                  child: _buildLoginCard(isDark, theme),
                 ),
               ),
             ),
@@ -299,7 +375,7 @@ class _NewLoginPageState extends State<NewLoginPage> {
     );
   }
 
-  Widget _buildMobileLayout() {
+  Widget _buildMobileLayout(bool isDark, ThemeData theme) {
     return SingleChildScrollView(
       child: Column(
         children: [
@@ -312,7 +388,7 @@ class _NewLoginPageState extends State<NewLoginPage> {
                 end: Alignment.bottomRight,
                 colors: [
                   AppColor.accentGreen.withAlpha(31),
-                  AppColor.primary.withAlpha(15),
+                  theme.colorScheme.primary.withAlpha(15),
                 ],
               ),
             ),
@@ -330,20 +406,30 @@ class _NewLoginPageState extends State<NewLoginPage> {
           ),
 
           // Login Form
-          Padding(padding: const EdgeInsets.all(24), child: _buildLoginCard()),
+          Padding(
+            padding: const EdgeInsets.all(24),
+            child: _buildLoginCard(isDark, theme),
+          ),
         ],
       ),
     );
   }
 
-  Widget _buildLoginCard() {
+  Widget _buildLoginCard(bool isDark, ThemeData theme) {
+    final textColor = theme.textTheme.bodyLarge?.color ?? AppColor.textPrimary;
+    final secondaryTextColor =
+        theme.textTheme.bodyMedium?.color ?? AppColor.textSecondary;
+
     return Container(
       decoration: BoxDecoration(
-        color: Theme.of(context).colorScheme.surface,
+        color: theme.colorScheme.surface,
         borderRadius: BorderRadius.circular(16),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withAlpha(15),
+            color:
+                isDark
+                    ? Colors.black.withAlpha(51)
+                    : Colors.black.withAlpha(15),
             blurRadius: 16,
             offset: const Offset(0, 8),
           ),
@@ -357,12 +443,12 @@ class _NewLoginPageState extends State<NewLoginPage> {
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             // Welcome Header
-            const Text(
+            Text(
               'Sign In',
               style: TextStyle(
                 fontSize: 32,
                 fontWeight: FontWeight.bold,
-                color: AppColor.textPrimary,
+                color: textColor,
               ),
             ).animate().fadeIn(delay: 100.ms).slideX(begin: -0.1, end: 0),
             const SizedBox(height: 8),
@@ -370,7 +456,7 @@ class _NewLoginPageState extends State<NewLoginPage> {
               'Enter your credentials to continue',
               style: ResponsiveText.body(
                 context,
-              ).copyWith(color: AppColor.textSecondary),
+              ).copyWith(color: secondaryTextColor),
             ).animate().fadeIn(delay: 200.ms).slideX(begin: -0.1, end: 0),
             const SizedBox(height: 40),
 
@@ -414,31 +500,31 @@ class _NewLoginPageState extends State<NewLoginPage> {
             const SizedBox(height: 24),
 
             // Divider with OR
-            Row(
-              children: [
-                Expanded(
-                  child: Divider(
-                    color: AppColor.textSecondary.withAlpha(77),
-                    thickness: 1,
-                  ),
-                ),
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 16),
-                  child: Text(
-                    'OR',
-                    style: ResponsiveText.body(context).copyWith(
-                      color: AppColor.textSecondary,
-                      fontWeight: FontWeight.w500,
+            Builder(
+              builder: (context) {
+                final theme = Theme.of(context);
+                final dividerColor = (theme.textTheme.bodyMedium?.color ??
+                        AppColor.textSecondary)
+                    .withAlpha(77);
+                return Row(
+                  children: [
+                    Expanded(child: Divider(color: dividerColor, thickness: 1)),
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 16),
+                      child: Text(
+                        'OR',
+                        style: ResponsiveText.body(context).copyWith(
+                          color:
+                              theme.textTheme.bodyMedium?.color ??
+                              AppColor.textSecondary,
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
                     ),
-                  ),
-                ),
-                Expanded(
-                  child: Divider(
-                    color: AppColor.textSecondary.withAlpha(77),
-                    thickness: 1,
-                  ),
-                ),
-              ],
+                    Expanded(child: Divider(color: dividerColor, thickness: 1)),
+                  ],
+                );
+              },
             ).animate().fadeIn(delay: 550.ms),
 
             const SizedBox(height: 24),
@@ -452,28 +538,35 @@ class _NewLoginPageState extends State<NewLoginPage> {
             const SizedBox(height: 24),
 
             // Register Link
-            Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Text(
-                  "Don't have an account? ",
-                  style: ResponsiveText.body(
-                    context,
-                  ).copyWith(color: AppColor.textSecondary),
-                ),
-                TextButton(
-                  onPressed: () {
-                    context.go('/register');
-                  },
-                  child: Text(
-                    'Sign Up',
-                    style: ResponsiveText.body(context).copyWith(
-                      color: AppColor.accentGreen,
-                      fontWeight: FontWeight.w600,
+            Builder(
+              builder: (context) {
+                final theme = Theme.of(context);
+                return Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Text(
+                      "Don't have an account? ",
+                      style: ResponsiveText.body(context).copyWith(
+                        color:
+                            theme.textTheme.bodyMedium?.color ??
+                            AppColor.textSecondary,
+                      ),
                     ),
-                  ),
-                ),
-              ],
+                    TextButton(
+                      onPressed: () {
+                        context.go('/register');
+                      },
+                      child: Text(
+                        'Sign Up',
+                        style: ResponsiveText.body(context).copyWith(
+                          color: AppColor.accentGreen,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ),
+                  ],
+                );
+              },
             ).animate().fadeIn(delay: 600.ms),
           ],
         ),
@@ -482,17 +575,24 @@ class _NewLoginPageState extends State<NewLoginPage> {
   }
 
   Widget _buildEmailField() {
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
     return TextFormField(
       controller: _emailController,
       keyboardType: TextInputType.emailAddress,
+      style: TextStyle(color: theme.textTheme.bodyLarge?.color),
       decoration: InputDecoration(
         labelText: 'Email',
         hintText: 'Enter your email',
-        prefixIcon: const Icon(Iconsax.sms),
+        labelStyle: TextStyle(color: theme.textTheme.bodyMedium?.color),
+        hintStyle: TextStyle(color: theme.textTheme.bodyMedium?.color),
+        prefixIcon: Icon(Iconsax.sms, color: theme.textTheme.bodyMedium?.color),
         border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
         enabledBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(12),
-          borderSide: BorderSide(color: Colors.grey[300]!),
+          borderSide: BorderSide(
+            color: isDark ? Colors.grey[700]! : Colors.grey[300]!,
+          ),
         ),
         focusedBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(12),
@@ -511,15 +611,26 @@ class _NewLoginPageState extends State<NewLoginPage> {
   }
 
   Widget _buildPasswordField() {
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
     return TextFormField(
       controller: _passwordController,
       obscureText: _obscurePassword,
+      style: TextStyle(color: theme.textTheme.bodyLarge?.color),
       decoration: InputDecoration(
         labelText: 'Password',
         hintText: 'Enter your password',
-        prefixIcon: const Icon(Iconsax.lock),
+        labelStyle: TextStyle(color: theme.textTheme.bodyMedium?.color),
+        hintStyle: TextStyle(color: theme.textTheme.bodyMedium?.color),
+        prefixIcon: Icon(
+          Iconsax.lock,
+          color: theme.textTheme.bodyMedium?.color,
+        ),
         suffixIcon: IconButton(
-          icon: Icon(_obscurePassword ? Iconsax.eye_slash : Iconsax.eye),
+          icon: Icon(
+            _obscurePassword ? Iconsax.eye_slash : Iconsax.eye,
+            color: theme.textTheme.bodyMedium?.color,
+          ),
           onPressed: () {
             setState(() {
               _obscurePassword = !_obscurePassword;
@@ -529,7 +640,9 @@ class _NewLoginPageState extends State<NewLoginPage> {
         border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
         enabledBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(12),
-          borderSide: BorderSide(color: Colors.grey[300]!),
+          borderSide: BorderSide(
+            color: isDark ? Colors.grey[700]! : Colors.grey[300]!,
+          ),
         ),
         focusedBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(12),

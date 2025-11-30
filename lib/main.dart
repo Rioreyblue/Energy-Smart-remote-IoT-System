@@ -381,6 +381,10 @@ void main() async {
   await ChatMonitorService.instance.initialize();
   await ChatMonitorService.instance.registerBackgroundTask();
 
+  // Register rate monitor background task
+  await RateMonitorService.instance.initialize();
+  await RateMonitorService.instance.registerBackgroundTask();
+
   // Run the app
   runApp(const MyApp());
 }

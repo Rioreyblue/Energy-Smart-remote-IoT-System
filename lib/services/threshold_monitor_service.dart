@@ -18,6 +18,9 @@ const String _kThresholdMonitorUnique = 'threshold_monitor_unique';
 const String kChatMonitorTask = 'chat_monitor_task';
 const String _kChatMonitorUnique = 'chat_monitor_unique';
 const String _kChatLastAlertPrefix = 'chat_last_alert_';
+const String kRateMonitorTask = 'rate_monitor_task';
+const String _kRateMonitorUnique = 'rate_monitor_unique';
+const String _kRateLastAlertPrefix = 'rate_last_alert_';
 
 bool _workmanagerInitialized = false;
 
@@ -41,6 +44,9 @@ void thresholdMonitorCallbackDispatcher() {
           break;
         case kChatMonitorTask:
           await ChatMonitorTask().run();
+          break;
+        case kRateMonitorTask:
+          await RateMonitorTask().run();
           break;
         default:
           AppLogger.w('[BackgroundTask] Unknown task received: $taskName');
@@ -337,6 +343,130 @@ class ChatMonitorTask {
       }
     } catch (e) {
       AppLogger.e('[ChatMonitorTask] Error running background chat check: $e');
+    }
+  }
+}
+
+class RateMonitorService {
+  RateMonitorService._();
+
+  static final RateMonitorService instance = RateMonitorService._();
+
+  bool _initialized = false;
+
+  Future<void> initialize() async {
+    if (_initialized) return;
+    await _ensureWorkmanagerInitialized();
+    _initialized = true;
+  }
+
+  Future<void> registerBackgroundTask() async {
+    await initialize();
+
+    await Workmanager().registerPeriodicTask(
+      _kRateMonitorUnique,
+      kRateMonitorTask,
+      frequency: const Duration(minutes: 30),
+      initialDelay: const Duration(minutes: 10),
+      existingWorkPolicy: ExistingPeriodicWorkPolicy.update,
+      constraints: Constraints(networkType: NetworkType.connected),
+    );
+    AppLogger.i(
+      '[RateMonitorService] Background rate monitor task registered.',
+    );
+  }
+
+  Future<void> cancelBackgroundTask() async {
+    if (!_initialized) return;
+    await Workmanager().cancelByUniqueName(_kRateMonitorUnique);
+    AppLogger.i('[RateMonitorService] Background rate monitor task cancelled.');
+  }
+}
+
+class RateMonitorTask {
+  final FirebaseAuth _auth = FirebaseAuth.instance;
+  final FirebaseFirestore _firestore = FirebaseFirestore.instance;
+
+  Future<void> run() async {
+    try {
+      final user = _auth.currentUser;
+      if (user == null) {
+        AppLogger.w('[RateMonitorTask] No authenticated user, skipping.');
+        return;
+      }
+
+      final prefs = await SharedPreferences.getInstance();
+      final notificationService = NotificationService();
+      await notificationService.ensureInitializedForBackground();
+
+      // Get current rate from Firestore
+      final rateDoc =
+          await _firestore
+              .collection('admin_settings')
+              .doc('system_config')
+              .get();
+
+      if (!rateDoc.exists) {
+        AppLogger.w('[RateMonitorTask] Rate document not found.');
+        return;
+      }
+
+      final data = rateDoc.data();
+      if (data == null || data['powerRate'] == null) {
+        AppLogger.w('[RateMonitorTask] Power rate not found in document.');
+        return;
+      }
+
+      final currentRate = (data['powerRate'] as num).toDouble();
+      final lastAlertKey = '$_kRateLastAlertPrefix${user.uid}';
+      final lastRateKey = '${_kRateLastAlertPrefix}last_rate_${user.uid}';
+
+      // Get last known rate
+      final lastRate = prefs.getDouble(lastRateKey);
+      final lastAlertMs = prefs.getInt(lastAlertKey);
+      final lastUpdated = (data['updatedAt'] as Timestamp?)?.toDate();
+
+      // Check if rate has changed
+      if (lastRate != null && (currentRate - lastRate).abs() < 0.00005) {
+        AppLogger.d('[RateMonitorTask] Rate unchanged, skipping notification.');
+        return;
+      }
+
+      // Check if we've already notified for this update
+      if (lastUpdated != null && lastAlertMs != null) {
+        final lastUpdatedMs = lastUpdated.millisecondsSinceEpoch;
+        if (lastUpdatedMs <= lastAlertMs) {
+          AppLogger.d(
+            '[RateMonitorTask] Already notified for this rate update, skipping.',
+          );
+          return;
+        }
+      }
+
+      // Show notification if rate changed
+      if (lastRate != null) {
+        await notificationService.showRateUpdateNotification(
+          oldRate: lastRate,
+          newRate: currentRate,
+        );
+
+        // Store the current rate and alert timestamp
+        await prefs.setDouble(lastRateKey, currentRate);
+        final timestampToStore =
+            lastUpdated?.millisecondsSinceEpoch ??
+            DateTime.now().millisecondsSinceEpoch;
+        await prefs.setInt(lastAlertKey, timestampToStore);
+
+        AppLogger.i(
+          '[RateMonitorTask] Rate update notification sent: ₱$lastRate → ₱$currentRate',
+        );
+      } else {
+        // First time - just store the rate without notification
+        await prefs.setDouble(lastRateKey, currentRate);
+        AppLogger.d('[RateMonitorTask] Initial rate stored: ₱$currentRate');
+      }
+    } catch (e) {
+      AppLogger.e('[RateMonitorTask] Error running background rate check: $e');
     }
   }
 }

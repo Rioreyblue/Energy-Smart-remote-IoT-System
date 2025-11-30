@@ -109,8 +109,16 @@ class AuthService {
         // Save organized data
         await _saveUserDataOrganized(userModel);
 
-        // Send email verification
-        await sendEmailVerification();
+        // Send email verification (non-blocking - don't fail registration if this fails)
+        try {
+          await sendEmailVerification();
+        } catch (emailError) {
+          // Log the error but don't fail registration
+          AppLogger.e(
+            '[AuthService] ⚠️ Failed to send email verification, but registration succeeded: $emailError',
+          );
+          // User can resend verification email later from the verification page
+        }
 
         return userModel;
       }
@@ -271,6 +279,7 @@ class AuthService {
         'verificationAttempts': userModel.verificationAttempts,
         'lastVerificationAttempt':
             userModel.lastVerificationAttempt?.toIso8601String(),
+        'status': 'active',
       });
     } catch (e) {
       throw Exception('Failed to save user data: ${e.toString()}');
@@ -292,11 +301,37 @@ class AuthService {
         return;
       }
 
+      AppLogger.d(
+        '[AuthService] 📧 Sending email verification to: ${user.email}',
+      );
+
+      // Send email verification without ActionCodeSettings
+      // Firebase will use the default email template configured in Firebase Console
       await user.sendEmailVerification();
-      AppLogger.i('[AuthService] ✅ Email verification sent to: ${user.email}');
+
+      AppLogger.i(
+        '[AuthService] ✅ Email verification sent successfully to: ${user.email}',
+      );
     } catch (e) {
       AppLogger.e('[AuthService] ❌ Error sending email verification: $e');
-      throw _handleAuthError(e);
+      AppLogger.e(
+        '[AuthService] Error details: ${e.runtimeType} - ${e.toString()}',
+      );
+
+      // Provide more helpful error message
+      String errorMessage = 'Failed to send verification email.';
+      if (e.toString().contains('network')) {
+        errorMessage =
+            'Network error. Please check your internet connection and try again.';
+      } else if (e.toString().contains('too-many-requests')) {
+        errorMessage =
+            'Too many requests. Please wait a few minutes before requesting another email.';
+      } else if (e.toString().contains('invalid-email')) {
+        errorMessage =
+            'Invalid email address. Please check your email and try again.';
+      }
+
+      throw Exception('$errorMessage ${e.toString()}');
     }
   }
 

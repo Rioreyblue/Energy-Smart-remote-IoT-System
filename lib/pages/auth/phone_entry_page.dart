@@ -115,9 +115,10 @@ class _PhoneEntryPageState extends State<PhoneEntryPage> {
         ),
         title: Text(
           'Verify Your Number',
-          style: ResponsiveText.title(
-            context,
-          ).copyWith(color: AppColor.primary, fontWeight: FontWeight.bold),
+          style: ResponsiveText.title(context).copyWith(
+            color: theme.textTheme.bodyLarge?.color ?? AppColor.primary,
+            fontWeight: FontWeight.bold,
+          ),
         ),
         centerTitle: true,
       ),
@@ -133,15 +134,21 @@ class _PhoneEntryPageState extends State<PhoneEntryPage> {
               SizedBox(height: Insets.xl),
               _buildSendButton(context),
               SizedBox(height: Insets.md),
-              TextButton(
-                onPressed: () => context.go('/'),
-                child: Text(
-                  'Already have a code? Enter it',
-                  style: ResponsiveText.body(context).copyWith(
-                    color: AppColor.primary,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
+              Builder(
+                builder: (context) {
+                  final theme = Theme.of(context);
+                  return TextButton(
+                    onPressed: () => context.go('/'),
+                    child: Text(
+                      'Already have a code? Enter it',
+                      style: ResponsiveText.body(context).copyWith(
+                        color: theme.textTheme.bodyLarge?.color ??
+                            AppColor.primary,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  );
+                },
               ),
               if (_statusMessage != null) ...[
                 SizedBox(height: Insets.lg),
@@ -176,6 +183,11 @@ class _PhoneEntryPageState extends State<PhoneEntryPage> {
   }
 
   Widget _buildInfoCard(BuildContext context) {
+    final theme = Theme.of(context);
+    final textColor = theme.textTheme.bodyLarge?.color ?? AppColor.primary;
+    final secondaryTextColor =
+        theme.textTheme.bodyMedium?.color ?? AppColor.textSecondary;
+
     return Container(
       padding: EdgeInsets.all(Insets.lg),
       decoration: BoxDecoration(
@@ -187,17 +199,18 @@ class _PhoneEntryPageState extends State<PhoneEntryPage> {
         children: [
           Text(
             'Send a one-time password to your phone.',
-            style: ResponsiveText.body(
-              context,
-            ).copyWith(color: AppColor.primary, fontWeight: FontWeight.w600),
+            style: ResponsiveText.body(context).copyWith(
+              color: textColor,
+              fontWeight: FontWeight.w600,
+            ),
           ),
           SizedBox(height: Insets.sm),
           Text(
             'SmsChef delivers the code through your registered device. '
             'Keep the SmsChef app online and the device connected so that the SMS can be sent.',
-            style: ResponsiveText.body(
-              context,
-            ).copyWith(color: AppColor.textSecondary),
+            style: ResponsiveText.body(context).copyWith(
+              color: secondaryTextColor,
+            ),
           ),
         ],
       ),
@@ -205,23 +218,48 @@ class _PhoneEntryPageState extends State<PhoneEntryPage> {
   }
 
   Widget _buildPhoneField(BuildContext context) {
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+    final textColor = theme.textTheme.bodyLarge?.color ?? AppColor.primary;
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(
           'Mobile number',
-          style: ResponsiveText.label(
-            context,
-          ).copyWith(fontWeight: FontWeight.w600),
+          style: ResponsiveText.label(context).copyWith(
+            fontWeight: FontWeight.w600,
+            color: textColor,
+          ),
         ),
         SizedBox(height: Insets.sm),
         TextField(
           controller: _phoneController,
           keyboardType: TextInputType.phone,
+          style: TextStyle(color: textColor),
           decoration: InputDecoration(
             hintText: '+63 9XX XXX XXXX',
-            prefixIcon: const Icon(Iconsax.mobile),
+            hintStyle: TextStyle(
+              color: theme.textTheme.bodyMedium?.color,
+            ),
+            prefixIcon: Icon(
+              Iconsax.mobile,
+              color: theme.textTheme.bodyMedium?.color,
+            ),
             border: OutlineInputBorder(borderRadius: BorderRadius.circular(16)),
+            enabledBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(16),
+              borderSide: BorderSide(
+                color: isDark ? Colors.grey[700]! : Colors.grey[300]!,
+              ),
+            ),
+            focusedBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(16),
+              borderSide: const BorderSide(
+                color: AppColor.accentGreen,
+                width: 2,
+              ),
+            ),
           ),
           onChanged: (_) => context.read<PhoneAuthService>().clearError(),
         ),

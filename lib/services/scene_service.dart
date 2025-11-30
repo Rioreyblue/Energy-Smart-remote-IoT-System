@@ -343,9 +343,9 @@ class SceneService {
           name: 'Sleep Mode',
           icon: 'Iconsax.moon',
           deviceStates: {
-            'appliances_001': const DeviceState(isOn: false),
+            'appliances_001': const DeviceState(isOn: true, value: 0.5),
             'appliances_002': const DeviceState(isOn: false),
-            'appliances_003': const DeviceState(isOn: false),
+            'appliances_003': const DeviceState(isOn: true, value: 0.5),
             'appliances_004': const DeviceState(isOn: false),
           },
           isDefault: true,

@@ -73,6 +73,16 @@ class NotificationService {
         importance: NotificationImportance.High,
       ),
       NotificationChannel(
+        channelKey: 'rate_updates',
+        channelName: 'Power Rate Updates',
+        channelDescription: 'Notifications when power rates are updated',
+        defaultColor: const Color(0xFF27AE60),
+        ledColor: const Color(0xFF27AE60),
+        playSound: true,
+        enableVibration: true,
+        importance: NotificationImportance.High,
+      ),
+      NotificationChannel(
         channelKey: 'budget_alerts',
         channelName: 'Budget Alerts',
         channelDescription: 'Critical alerts for budget threshold reached',
@@ -357,6 +367,51 @@ class NotificationService {
       );
     } catch (e) {
       AppLogger.e('[NotificationService] Error showing chat notification: $e');
+    }
+  }
+
+  /// Show power rate update notification (local).
+  Future<void> showRateUpdateNotification({
+    required double oldRate,
+    required double newRate,
+  }) async {
+    try {
+      final rateChange = newRate - oldRate;
+      final changeText =
+          rateChange > 0
+              ? 'increased'
+              : rateChange < 0
+              ? 'decreased'
+              : 'updated';
+      final changeIcon =
+          rateChange > 0
+              ? '📈'
+              : rateChange < 0
+              ? '📉'
+              : '📊';
+
+      await AwesomeNotifications().createNotification(
+        content: NotificationContent(
+          id: DateTime.now().millisecondsSinceEpoch.remainder(100000),
+          channelKey: 'rate_updates',
+          title: '$changeIcon Power Rate Updated',
+          body:
+              'Rate $changeText from ₱${oldRate.toStringAsFixed(4)}/kWh to ₱${newRate.toStringAsFixed(4)}/kWh',
+          category: NotificationCategory.Status,
+          payload: {
+            'type': 'rate_update',
+            'oldRate': oldRate.toString(),
+            'newRate': newRate.toString(),
+          },
+        ),
+      );
+      AppLogger.i(
+        '[NotificationService] Rate update notification shown: ₱$oldRate → ₱$newRate',
+      );
+    } catch (e) {
+      AppLogger.e(
+        '[NotificationService] Error showing rate update notification: $e',
+      );
     }
   }
 
