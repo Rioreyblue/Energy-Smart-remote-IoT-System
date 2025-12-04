@@ -39,6 +39,7 @@ import 'services/push_notification_manager.dart';
 import 'services/notification_service.dart';
 import 'services/chat_notification_service.dart';
 import 'services/threshold_monitor_service.dart';
+import 'services/onesignal_service.dart';
 import 'controllers/chat_notification_controller.dart';
 import 'utils/app_router.dart';
 import 'services/user_status_service.dart';
@@ -367,23 +368,65 @@ void main() async {
   // Ensure Flutter binding is initialized before any async operations
   WidgetsFlutterBinding.ensureInitialized();
 
-  // Initialize Firebase with all security configurations
-  await _initializeFirebase();
+  try {
+    // Initialize Firebase with all security configurations
+    await _initializeFirebase();
 
-  // Create router and store globally for notification navigation
-  appRouter = _createRouter();
+    // Create router and store globally for notification navigation
+    appRouter = _createRouter();
 
-  await PushNotificationManager.instance.initialize();
-  await NotificationService().initialize();
-  await ChatNotificationService().initialize();
-  await ThresholdMonitorService.instance.initialize();
-  await ThresholdMonitorService.instance.registerBackgroundTask();
-  await ChatMonitorService.instance.initialize();
-  await ChatMonitorService.instance.registerBackgroundTask();
+    // Initialize services with individual error handling
+    // This ensures one service failure doesn't prevent the app from starting
+    try {
+      await OneSignalService.instance.initialize();
+    } catch (e) {
+      AppLogger.e('[Main] Error initializing OneSignalService: $e');
+      // Continue - app can work without OneSignal
+    }
 
-  // Register rate monitor background task
-  await RateMonitorService.instance.initialize();
-  await RateMonitorService.instance.registerBackgroundTask();
+    try {
+      await PushNotificationManager.instance.initialize();
+    } catch (e) {
+      AppLogger.e('[Main] Error initializing PushNotificationManager: $e');
+    }
+
+    try {
+      await NotificationService().initialize();
+    } catch (e) {
+      AppLogger.e('[Main] Error initializing NotificationService: $e');
+    }
+
+    try {
+      await ChatNotificationService().initialize();
+    } catch (e) {
+      AppLogger.e('[Main] Error initializing ChatNotificationService: $e');
+    }
+
+    try {
+      await ThresholdMonitorService.instance.initialize();
+      await ThresholdMonitorService.instance.registerBackgroundTask();
+    } catch (e) {
+      AppLogger.e('[Main] Error initializing ThresholdMonitorService: $e');
+    }
+
+    try {
+      await ChatMonitorService.instance.initialize();
+      await ChatMonitorService.instance.registerBackgroundTask();
+    } catch (e) {
+      AppLogger.e('[Main] Error initializing ChatMonitorService: $e');
+    }
+
+    try {
+      await RateMonitorService.instance.initialize();
+      await RateMonitorService.instance.registerBackgroundTask();
+    } catch (e) {
+      AppLogger.e('[Main] Error initializing RateMonitorService: $e');
+    }
+  } catch (e, stackTrace) {
+    AppLogger.e('[Main] Critical error during initialization: $e');
+    AppLogger.e('[Main] Stack trace: $stackTrace');
+    // Still run the app even if initialization fails
+  }
 
   // Run the app
   runApp(const MyApp());

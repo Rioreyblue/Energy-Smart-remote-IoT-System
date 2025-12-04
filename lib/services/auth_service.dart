@@ -504,8 +504,13 @@ class AuthService {
     try {
       AppLogger.d('[AuthService] 🔐 Starting Google sign-in process');
 
-      // Initialize Google Sign In
-      final googleSignIn = GoogleSignIn();
+      // Initialize Google Sign In with server client ID for idToken
+      // This is the Web client ID from Firebase Console
+      final googleSignIn = GoogleSignIn(
+        serverClientId:
+            '281073543283-f9prvi1q4251jl8qpjjv7v38lnnqf3t6.apps.googleusercontent.com',
+        scopes: ['email', 'profile'],
+      );
 
       // Check if there's a different user already signed in
       final currentUser = _auth.currentUser;
@@ -590,6 +595,28 @@ class AuthService {
       return null;
     } catch (e) {
       AppLogger.e('[AuthService] ❌ Error in signInWithGoogle: $e');
+
+      // Provide more specific error messages for common issues
+      if (e.toString().contains('network_error') ||
+          e.toString().contains('ApiException: 7')) {
+        AppLogger.e(
+          '[AuthService] Google Sign-In Network Error. '
+          'This usually means:\n'
+          '1. SHA-1/SHA-256 fingerprints are missing in Firebase Console\n'
+          '2. Google Play Services is not available or outdated\n'
+          '3. Network connectivity issues\n'
+          'To fix: Get your SHA-1 fingerprint using:\n'
+          '  keytool -list -v -keystore ~/.android/debug.keystore -alias androiddebugkey -storepass android -keypass android\n'
+          'Then add it to Firebase Console > Project Settings > Your App > SHA certificate fingerprints',
+        );
+        throw Exception(
+          'Google Sign-In failed: Network error. Please ensure:\n'
+          '1. SHA-1/SHA-256 fingerprints are added in Firebase Console\n'
+          '2. Google Play Services is updated\n'
+          '3. You have internet connection',
+        );
+      }
+
       throw _handleAuthError(e);
     }
   }

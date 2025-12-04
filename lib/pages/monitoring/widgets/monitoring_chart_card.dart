@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 import 'package:fl_chart/fl_chart.dart';
 import 'package:exercise_app/constants/constant.dart';
@@ -26,6 +28,41 @@ class _MonitoringChartCardState extends State<MonitoringChartCard> {
   final FirebaseDatabase _database = FirebaseDatabase.instance;
   final FirebaseAuth _auth = FirebaseAuth.instance;
   ChartMetric _selectedMetric = ChartMetric.kWh;
+  final int _currentYear = DateTime.now().year;
+  late final List<DateTime> _yearMonths;
+  late DateTime _selectedDailyMonth;
+  late DateTime _selectedDay;
+  int _selectedDayNumber = DateTime.now().day;
+  String? _selectedWeekMonthKey;
+  String? _selectedWeekKey;
+  String? _selectedMonthKey;
+  List<Map<String, dynamic>>? _dailyDataCache;
+  List<Map<String, dynamic>>? _weeklyDataCache;
+  List<Map<String, dynamic>>? _monthlyDataCache;
+
+  @override
+  void initState() {
+    super.initState();
+    _yearMonths = List.generate(
+      12,
+      (index) => DateTime(_currentYear, index + 1, 1),
+    );
+    final now = DateTime.now();
+    _selectedDailyMonth = _yearMonths[now.month - 1];
+    final daysInSelectedMonth = DateUtils.getDaysInMonth(
+      _selectedDailyMonth.year,
+      _selectedDailyMonth.month,
+    );
+    _selectedDayNumber = math.min(now.day, daysInSelectedMonth);
+    _selectedDay = DateTime(
+      _selectedDailyMonth.year,
+      _selectedDailyMonth.month,
+      _selectedDayNumber,
+    );
+    _selectedWeekMonthKey =
+        '${_selectedDailyMonth.year}-${_selectedDailyMonth.month.toString().padLeft(2, '0')}';
+    _selectedMonthKey = _selectedWeekMonthKey;
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -36,7 +73,7 @@ class _MonitoringChartCardState extends State<MonitoringChartCard> {
     switch (period) {
       case 'Day':
         return _ChartCard(
-          title: "Today's Usage",
+          title: 'Daily Energy Usage',
           onMetricChanged: (metric) {
             setState(() {
               _selectedMetric = metric;
@@ -47,7 +84,7 @@ class _MonitoringChartCardState extends State<MonitoringChartCard> {
         );
       case 'Week':
         return _ChartCard(
-          title: 'Weekly Usage Trend',
+          title: 'Weekly Energy Usage',
           onMetricChanged: (metric) {
             setState(() {
               _selectedMetric = metric;
@@ -58,7 +95,7 @@ class _MonitoringChartCardState extends State<MonitoringChartCard> {
         );
       case 'Month':
         return _ChartCard(
-          title: 'Monthly Consumption',
+          title: 'Monthly Energy Usage',
           onMetricChanged: (metric) {
             setState(() {
               _selectedMetric = metric;
@@ -98,6 +135,23 @@ class _MonitoringChartCardState extends State<MonitoringChartCard> {
         }
 
         final data = snapshot.data!;
+
+        // Compute summary for the selected day (if present)
+        final String selectedKey = DateFormat(
+          'yyyy-MM-dd',
+        ).format(_selectedDay);
+        Map<String, dynamic>? selectedEntry;
+        for (final item in data) {
+          if (item['date'] == selectedKey) {
+            selectedEntry = item;
+            break;
+          }
+        }
+        final double selectedKwh =
+            (selectedEntry?['totalKwh'] ?? 0.0).toDouble();
+        final double selectedCost =
+            (selectedEntry?['totalCost'] ?? 0.0).toDouble();
+
         final spots = _buildSpots(data, _selectedMetric);
         final useCost = _selectedMetric == ChartMetric.cost;
         final maxY = _calculateMaxValue(data, useCost: useCost) * 1.2;
@@ -113,125 +167,159 @@ class _MonitoringChartCardState extends State<MonitoringChartCard> {
           (0.9 * 255).toInt(),
         );
 
-        return SizedBox(
-          height: 200,
-          child: LineChart(
-            LineChartData(
-              minY: 0,
-              maxY: maxY,
-              gridData: FlGridData(
-                show: true,
-                horizontalInterval: maxY / 5,
-                getDrawingHorizontalLine:
-                    (value) =>
-                        FlLine(color: horizontalLineColor, strokeWidth: 1),
+        final bool hasSelectedData = selectedEntry != null;
+
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            _buildDailyMonthSelector(context),
+            SizedBox(height: Insets.sm),
+            _buildDailyDaySelector(context),
+            SizedBox(height: Insets.sm),
+            Text(
+              'Selected day: ${DateFormat('MMMM d, yyyy').format(_selectedDay)}',
+              style: ResponsiveText.caption(context),
+            ),
+            SizedBox(height: Insets.xm),
+            Text(
+              'Total: ${selectedKwh.toStringAsFixed(2)} kWh • ₱${selectedCost.toStringAsFixed(2)}',
+              style: ResponsiveText.body(
+                context,
+              ).copyWith(fontWeight: FontWeight.w600),
+            ),
+            if (!hasSelectedData)
+              Padding(
+                padding: EdgeInsets.only(top: Insets.sm),
+                child: Text(
+                  'No consumption data available for this day.',
+                  style: ResponsiveText.caption(context),
+                ),
               ),
-              titlesData: FlTitlesData(
-                bottomTitles: AxisTitles(
-                  sideTitles: SideTitles(
-                    showTitles: true,
-                    interval: 1,
-                    getTitlesWidget: (value, _) {
-                      final idx = value.toInt();
-                      if (idx >= 0 && idx < data.length) {
-                        final dateStr = data[idx]['date'] as String?;
-                        if (dateStr != null) {
-                          try {
-                            final date = DateTime.parse(dateStr);
-                            return Padding(
-                              padding: const EdgeInsets.only(top: 8),
-                              child: Text(
-                                DateFormat('M/d').format(date),
-                                style: ResponsiveText.caption(context),
-                              ),
-                            );
-                          } catch (e) {
+            SizedBox(height: Insets.md),
+            SizedBox(
+              height: 200,
+              child: LineChart(
+                LineChartData(
+                  minY: 0,
+                  maxY: maxY,
+                  gridData: FlGridData(
+                    show: true,
+                    horizontalInterval: maxY / 5,
+                    getDrawingHorizontalLine:
+                        (value) =>
+                            FlLine(color: horizontalLineColor, strokeWidth: 1),
+                  ),
+                  titlesData: FlTitlesData(
+                    bottomTitles: AxisTitles(
+                      sideTitles: SideTitles(
+                        showTitles: true,
+                        interval: 1,
+                        getTitlesWidget: (value, _) {
+                          final idx = value.toInt();
+                          if (idx >= 0 && idx < data.length) {
+                            final dateStr = data[idx]['date'] as String?;
+                            if (dateStr != null) {
+                              try {
+                                final date = DateTime.parse(dateStr);
+                                return Padding(
+                                  padding: const EdgeInsets.only(top: 8),
+                                  child: Text(
+                                    DateFormat('M/d').format(date),
+                                    style: ResponsiveText.caption(context),
+                                  ),
+                                );
+                              } catch (e) {
+                                return Text(
+                                  '',
+                                  style: ResponsiveText.caption(context),
+                                );
+                              }
+                            }
+                          }
+                          return Text(
+                            '',
+                            style: ResponsiveText.caption(context),
+                          );
+                        },
+                      ),
+                    ),
+                    leftTitles: AxisTitles(
+                      sideTitles: SideTitles(
+                        showTitles: true,
+                        interval: maxY / 5,
+                        reservedSize: 40,
+                        getTitlesWidget: (value, _) {
+                          if (useCost) {
                             return Text(
-                              '',
+                              '₱${value.toStringAsFixed(0)}',
                               style: ResponsiveText.caption(context),
                             );
                           }
-                        }
-                      }
-                      return Text('', style: ResponsiveText.caption(context));
-                    },
+                          return Text(
+                            value.toStringAsFixed(1),
+                            style: ResponsiveText.caption(context),
+                          );
+                        },
+                      ),
+                    ),
+                    topTitles: const AxisTitles(
+                      sideTitles: SideTitles(showTitles: false),
+                    ),
+                    rightTitles: const AxisTitles(
+                      sideTitles: SideTitles(showTitles: false),
+                    ),
+                  ),
+                  borderData: FlBorderData(show: false),
+                  lineBarsData: [
+                    LineChartBarData(
+                      spots: spots,
+                      isCurved: true,
+                      color: primaryColor,
+                      barWidth: 3,
+                      belowBarData: BarAreaData(
+                        show: true,
+                        color: primaryColor.withAlpha((0.12 * 255).toInt()),
+                      ),
+                      dotData: FlDotData(
+                        show: true,
+                        getDotPainter: (spot, percent, barData, index) {
+                          return FlDotCirclePainter(
+                            radius: 4,
+                            color: surfaceColor,
+                            strokeWidth: 2,
+                            strokeColor: primaryColor,
+                          );
+                        },
+                      ),
+                    ),
+                  ],
+                  lineTouchData: LineTouchData(
+                    enabled: true,
+                    touchTooltipData: LineTouchTooltipData(
+                      getTooltipColor: (spots) => tooltipBackgroundColor,
+                      getTooltipItems:
+                          (touchedSpots) =>
+                              touchedSpots.map((spot) {
+                                final idx = spot.x.toInt();
+                                final kwh = data[idx]['totalKwh'] ?? 0.0;
+                                final cost = data[idx]['totalCost'] ?? 0.0;
+                                return LineTooltipItem(
+                                  '${kwh.toStringAsFixed(2)} kWh\n₱${cost.toStringAsFixed(2)}',
+                                  ResponsiveText.body(
+                                    context,
+                                  ).copyWith(color: tooltipTextColor),
+                                );
+                              }).toList(),
+                    ),
+                  ),
+                  extraLinesData: ExtraLinesData(
+                    verticalLines: [],
+                    horizontalLines: [],
                   ),
                 ),
-                leftTitles: AxisTitles(
-                  sideTitles: SideTitles(
-                    showTitles: true,
-                    interval: maxY / 5,
-                    reservedSize: 40,
-                    getTitlesWidget: (value, _) {
-                      if (useCost) {
-                        return Text(
-                          '₱${value.toStringAsFixed(0)}',
-                          style: ResponsiveText.caption(context),
-                        );
-                      }
-                      return Text(
-                        value.toStringAsFixed(1),
-                        style: ResponsiveText.caption(context),
-                      );
-                    },
-                  ),
-                ),
-                topTitles: const AxisTitles(
-                  sideTitles: SideTitles(showTitles: false),
-                ),
-                rightTitles: const AxisTitles(
-                  sideTitles: SideTitles(showTitles: false),
-                ),
-              ),
-              borderData: FlBorderData(show: false),
-              lineBarsData: [
-                LineChartBarData(
-                  spots: spots,
-                  isCurved: true,
-                  color: primaryColor,
-                  barWidth: 3,
-                  belowBarData: BarAreaData(
-                    show: true,
-                    color: primaryColor.withAlpha((0.12 * 255).toInt()),
-                  ),
-                  dotData: FlDotData(
-                    show: true,
-                    getDotPainter: (spot, percent, barData, index) {
-                      return FlDotCirclePainter(
-                        radius: 4,
-                        color: surfaceColor,
-                        strokeWidth: 2,
-                        strokeColor: primaryColor,
-                      );
-                    },
-                  ),
-                ),
-              ],
-              lineTouchData: LineTouchData(
-                enabled: true,
-                touchTooltipData: LineTouchTooltipData(
-                  getTooltipColor: (spots) => tooltipBackgroundColor,
-                  getTooltipItems:
-                      (touchedSpots) =>
-                          touchedSpots.map((spot) {
-                            final idx = spot.x.toInt();
-                            final kwh = data[idx]['totalKwh'] ?? 0.0;
-                            final cost = data[idx]['totalCost'] ?? 0.0;
-                            return LineTooltipItem(
-                              '${kwh.toStringAsFixed(2)} kWh\n₱${cost.toStringAsFixed(2)}',
-                              ResponsiveText.body(
-                                context,
-                              ).copyWith(color: tooltipTextColor),
-                            );
-                          }).toList(),
-                ),
-              ),
-              extraLinesData: ExtraLinesData(
-                verticalLines: [],
-                horizontalLines: [],
               ),
             ),
-          ),
+          ],
         );
       },
     );
@@ -263,9 +351,72 @@ class _MonitoringChartCardState extends State<MonitoringChartCard> {
         }
 
         final data = snapshot.data!;
-        final spots = _buildSpots(data, _selectedMetric);
+
+        final sortedMonthKeys =
+            _yearMonths
+                .map(
+                  (month) =>
+                      '${month.year}-${month.month.toString().padLeft(2, '0')}',
+                )
+                .toList();
+        _selectedWeekMonthKey ??= sortedMonthKeys.last;
+        if (!sortedMonthKeys.contains(_selectedWeekMonthKey)) {
+          _selectedWeekMonthKey = sortedMonthKeys.last;
+        }
+
+        // Filter weeks for selected month (for chart + week dropdown)
+        final List<Map<String, dynamic>> monthWeeks =
+            _selectedWeekMonthKey == null
+                ? data
+                : data.where((item) {
+                  final startDateStr = item['startDate'] as String?;
+                  if (startDateStr == null) return false;
+                  try {
+                    final d = DateTime.parse(startDateStr);
+                    final key =
+                        '${d.year}-${d.month.toString().padLeft(2, '0')}';
+                    return key == _selectedWeekMonthKey;
+                  } catch (_) {
+                    return false;
+                  }
+                }).toList();
+
+        // Ensure we have at least one week to show
+        final effectiveWeeks = monthWeeks.isNotEmpty ? monthWeeks : data;
+        if (effectiveWeeks.isEmpty) {
+          return _buildEmptyChart('No weekly data available');
+        }
+
+        // Choose a selected week for summary (default to last in effective list)
+        final validWeekKeys =
+            effectiveWeeks
+                .map((item) => item['week'] as String?)
+                .whereType<String>()
+                .toList();
+        if (_selectedWeekKey == null ||
+            !validWeekKeys.contains(_selectedWeekKey)) {
+          _selectedWeekKey =
+              validWeekKeys.isNotEmpty ? validWeekKeys.last : null;
+        }
+
+        Map<String, dynamic>? selectedWeek;
+        for (final item in effectiveWeeks) {
+          if (item['week'] == _selectedWeekKey) {
+            selectedWeek = item;
+            break;
+          }
+        }
+        selectedWeek ??= effectiveWeeks.last;
+
+        final double selectedWeekKwh =
+            (selectedWeek['totalKwh'] ?? 0.0).toDouble();
+        final double selectedWeekCost =
+            (selectedWeek['totalCost'] ?? 0.0).toDouble();
+
+        // Spots for chart use only weeks within selected month (or all if none)
+        final spots = _buildSpots(effectiveWeeks, _selectedMetric);
         final useCost = _selectedMetric == ChartMetric.cost;
-        final maxY = _calculateMaxValue(data, useCost: useCost) * 1.2;
+        final maxY = _calculateMaxValue(effectiveWeeks, useCost: useCost) * 1.2;
 
         final theme = Theme.of(context);
         final bool isDark = theme.brightness == Brightness.dark;
@@ -278,111 +429,285 @@ class _MonitoringChartCardState extends State<MonitoringChartCard> {
           (0.9 * 255).toInt(),
         );
 
-        return SizedBox(
-          height: 200,
-          child: LineChart(
-            LineChartData(
-              minY: 0,
-              maxY: maxY,
-              gridData: FlGridData(
-                show: true,
-                horizontalInterval: maxY / 5,
-                getDrawingHorizontalLine:
-                    (value) =>
-                        FlLine(color: horizontalLineColor, strokeWidth: 1),
-              ),
-              titlesData: FlTitlesData(
-                bottomTitles: AxisTitles(
-                  sideTitles: SideTitles(
-                    showTitles: true,
-                    interval: 1,
-                    getTitlesWidget: (value, _) {
-                      final idx = value.toInt();
-                      if (idx >= 0 && idx < data.length) {
-                        final week = data[idx]['week'] as String?;
-                        return Padding(
-                          padding: const EdgeInsets.only(top: 8),
-                          child: Text(
-                            week != null ? 'W${week.split('-')[1]}' : '',
-                            style: ResponsiveText.caption(context),
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Month + week filter row - responsive layout
+            LayoutBuilder(
+              builder: (context, constraints) {
+                final isSmallScreen = constraints.maxWidth < 350;
+                if (isSmallScreen) {
+                  // Stack vertically on small screens
+                  return Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      if (sortedMonthKeys.isNotEmpty) ...[
+                        Row(
+                          children: [
+                            Text('Month:', style: ResponsiveText.body(context)),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: DropdownButton<String>(
+                                value: _selectedWeekMonthKey,
+                                isExpanded: true,
+                                items:
+                                    sortedMonthKeys
+                                        .map(
+                                          (key) => DropdownMenuItem<String>(
+                                            value: key,
+                                            child: Text(
+                                              _formatMonthLabel(key),
+                                              overflow: TextOverflow.ellipsis,
+                                            ),
+                                          ),
+                                        )
+                                        .toList(),
+                                onChanged: (value) {
+                                  if (value == null) return;
+                                  setState(() {
+                                    _selectedWeekMonthKey = value;
+                                    _selectedWeekKey = null;
+                                  });
+                                },
+                              ),
+                            ),
+                          ],
+                        ),
+                        SizedBox(height: Insets.sm),
+                      ],
+                      if (effectiveWeeks.isNotEmpty) ...[
+                        Row(
+                          children: [
+                            Text('Week:', style: ResponsiveText.body(context)),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: DropdownButton<String>(
+                                value: _selectedWeekKey,
+                                isExpanded: true,
+                                items: List.generate(effectiveWeeks.length, (
+                                  index,
+                                ) {
+                                  final item = effectiveWeeks[index];
+                                  final weekKey =
+                                      item['week'] as String? ??
+                                      'W${(index + 1).toString().padLeft(2, '0')}';
+                                  final label = 'Week ${index + 1}';
+                                  return DropdownMenuItem<String>(
+                                    value: weekKey,
+                                    child: Text(
+                                      label,
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
+                                  );
+                                }),
+                                onChanged: (value) {
+                                  if (value == null) return;
+                                  setState(() {
+                                    _selectedWeekKey = value;
+                                  });
+                                },
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ],
+                  );
+                } else {
+                  // Horizontal layout on larger screens
+                  return Row(
+                    children: [
+                      if (sortedMonthKeys.isNotEmpty) ...[
+                        Text('Month:', style: ResponsiveText.body(context)),
+                        const SizedBox(width: 8),
+                        Flexible(
+                          child: DropdownButton<String>(
+                            value: _selectedWeekMonthKey,
+                            isExpanded: true,
+                            items:
+                                sortedMonthKeys
+                                    .map(
+                                      (key) => DropdownMenuItem<String>(
+                                        value: key,
+                                        child: Text(
+                                          _formatMonthLabel(key),
+                                          overflow: TextOverflow.ellipsis,
+                                        ),
+                                      ),
+                                    )
+                                    .toList(),
+                            onChanged: (value) {
+                              if (value == null) return;
+                              setState(() {
+                                _selectedWeekMonthKey = value;
+                                _selectedWeekKey = null;
+                              });
+                            },
                           ),
-                        );
-                      }
-                      return Text('', style: ResponsiveText.caption(context));
-                    },
-                  ),
-                ),
-                leftTitles: AxisTitles(
-                  sideTitles: SideTitles(
-                    showTitles: true,
-                    interval: maxY / 5,
-                    reservedSize: 40,
-                    getTitlesWidget: (value, _) {
-                      if (useCost) {
-                        return Text(
-                          '₱${value.toStringAsFixed(0)}',
-                          style: ResponsiveText.caption(context),
-                        );
-                      }
-                      return Text(
-                        value.toStringAsFixed(1),
-                        style: ResponsiveText.caption(context),
-                      );
-                    },
-                  ),
-                ),
-                topTitles: const AxisTitles(
-                  sideTitles: SideTitles(showTitles: false),
-                ),
-                rightTitles: const AxisTitles(
-                  sideTitles: SideTitles(showTitles: false),
-                ),
-              ),
-              borderData: FlBorderData(show: false),
-              lineBarsData: [
-                LineChartBarData(
-                  spots: spots,
-                  isCurved: true,
-                  color: primaryColor,
-                  barWidth: 3,
-                  belowBarData: BarAreaData(
+                        ),
+                      ],
+                      const SizedBox(width: 16),
+                      if (effectiveWeeks.isNotEmpty) ...[
+                        Text('Week:', style: ResponsiveText.body(context)),
+                        const SizedBox(width: 8),
+                        Flexible(
+                          child: DropdownButton<String>(
+                            value: _selectedWeekKey,
+                            isExpanded: true,
+                            items: List.generate(effectiveWeeks.length, (
+                              index,
+                            ) {
+                              final item = effectiveWeeks[index];
+                              final weekKey =
+                                  item['week'] as String? ??
+                                  'W${(index + 1).toString().padLeft(2, '0')}';
+                              final label = 'Week ${index + 1}';
+                              return DropdownMenuItem<String>(
+                                value: weekKey,
+                                child: Text(
+                                  label,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              );
+                            }),
+                            onChanged: (value) {
+                              if (value == null) return;
+                              setState(() {
+                                _selectedWeekKey = value;
+                              });
+                            },
+                          ),
+                        ),
+                      ],
+                    ],
+                  );
+                }
+              },
+            ),
+            const SizedBox(height: 8),
+            Text(
+              'Selected week total: ${selectedWeekKwh.toStringAsFixed(2)} kWh • ₱${selectedWeekCost.toStringAsFixed(2)}',
+              style: ResponsiveText.body(
+                context,
+              ).copyWith(fontWeight: FontWeight.w600),
+            ),
+            const SizedBox(height: 8),
+            SizedBox(
+              height: 200,
+              child: LineChart(
+                LineChartData(
+                  minY: 0,
+                  maxY: maxY,
+                  gridData: FlGridData(
                     show: true,
-                    color: primaryColor.withAlpha((0.12 * 255).toInt()),
+                    horizontalInterval: maxY / 5,
+                    getDrawingHorizontalLine:
+                        (value) =>
+                            FlLine(color: horizontalLineColor, strokeWidth: 1),
                   ),
-                  dotData: FlDotData(
-                    show: true,
-                    getDotPainter: (spot, percent, barData, index) {
-                      return FlDotCirclePainter(
-                        radius: 4,
-                        color: surfaceColor,
-                        strokeWidth: 2,
-                        strokeColor: primaryColor,
-                      );
-                    },
-                  ),
-                ),
-              ],
-              lineTouchData: LineTouchData(
-                enabled: true,
-                touchTooltipData: LineTouchTooltipData(
-                  getTooltipColor: (spots) => tooltipBackgroundColor,
-                  getTooltipItems:
-                      (touchedSpots) =>
-                          touchedSpots.map((spot) {
-                            final idx = spot.x.toInt();
-                            final kwh = data[idx]['totalKwh'] ?? 0.0;
-                            final cost = data[idx]['totalCost'] ?? 0.0;
-                            return LineTooltipItem(
-                              '${kwh.toStringAsFixed(2)} kWh\n₱${cost.toStringAsFixed(2)}',
-                              ResponsiveText.body(
-                                context,
-                              ).copyWith(color: tooltipTextColor),
+                  titlesData: FlTitlesData(
+                    bottomTitles: AxisTitles(
+                      sideTitles: SideTitles(
+                        showTitles: true,
+                        interval: 1,
+                        getTitlesWidget: (value, _) {
+                          final idx = value.toInt();
+                          if (idx >= 0 && idx < effectiveWeeks.length) {
+                            final label = 'Week ${idx + 1}';
+                            return Padding(
+                              padding: const EdgeInsets.only(top: 8),
+                              child: Text(
+                                label,
+                                style: ResponsiveText.caption(context),
+                              ),
                             );
-                          }).toList(),
+                          }
+                          return Text(
+                            '',
+                            style: ResponsiveText.caption(context),
+                          );
+                        },
+                      ),
+                    ),
+                    leftTitles: AxisTitles(
+                      sideTitles: SideTitles(
+                        showTitles: true,
+                        interval: maxY / 5,
+                        reservedSize: 40,
+                        getTitlesWidget: (value, _) {
+                          if (useCost) {
+                            return Text(
+                              '₱${value.toStringAsFixed(0)}',
+                              style: ResponsiveText.caption(context),
+                            );
+                          }
+                          return Text(
+                            value.toStringAsFixed(1),
+                            style: ResponsiveText.caption(context),
+                          );
+                        },
+                      ),
+                    ),
+                    topTitles: const AxisTitles(
+                      sideTitles: SideTitles(showTitles: false),
+                    ),
+                    rightTitles: const AxisTitles(
+                      sideTitles: SideTitles(showTitles: false),
+                    ),
+                  ),
+                  borderData: FlBorderData(show: false),
+                  lineBarsData: [
+                    LineChartBarData(
+                      spots: spots,
+                      isCurved: true,
+                      color: primaryColor,
+                      barWidth: 3,
+                      belowBarData: BarAreaData(
+                        show: true,
+                        color: primaryColor.withAlpha((0.12 * 255).toInt()),
+                      ),
+                      dotData: FlDotData(
+                        show: true,
+                        getDotPainter: (spot, percent, barData, index) {
+                          return FlDotCirclePainter(
+                            radius: 4,
+                            color: surfaceColor,
+                            strokeWidth: 2,
+                            strokeColor: primaryColor,
+                          );
+                        },
+                      ),
+                    ),
+                  ],
+                  lineTouchData: LineTouchData(
+                    enabled: true,
+                    touchTooltipData: LineTouchTooltipData(
+                      getTooltipColor: (spots) => tooltipBackgroundColor,
+                      getTooltipItems:
+                          (touchedSpots) =>
+                              touchedSpots.map((spot) {
+                                final idx = spot.x.toInt();
+                                final kwh =
+                                    effectiveWeeks[idx]['totalKwh'] ?? 0.0;
+                                final cost =
+                                    effectiveWeeks[idx]['totalCost'] ?? 0.0;
+                                return LineTooltipItem(
+                                  '${kwh.toStringAsFixed(2)} kWh\n₱${cost.toStringAsFixed(2)}',
+                                  ResponsiveText.body(
+                                    context,
+                                  ).copyWith(color: tooltipTextColor),
+                                );
+                              }).toList(),
+                    ),
+                  ),
+                  extraLinesData: ExtraLinesData(
+                    verticalLines: [],
+                    horizontalLines: [],
+                  ),
                 ),
               ),
             ),
-          ),
+          ],
         );
       },
     );
@@ -417,6 +742,32 @@ class _MonitoringChartCardState extends State<MonitoringChartCard> {
         final useCost = _selectedMetric == ChartMetric.cost;
         final maxY = _calculateMaxValue(data, useCost: useCost) * 1.2;
 
+        final sortedMonthKeys =
+            _yearMonths
+                .map(
+                  (month) =>
+                      '${month.year}-${month.month.toString().padLeft(2, '0')}',
+                )
+                .toList();
+        _selectedMonthKey ??= sortedMonthKeys.last;
+
+        // Find selected month entry for summary
+        Map<String, dynamic>? selectedMonth;
+        if (_selectedMonthKey != null) {
+          for (final item in data) {
+            if (item['month'] == _selectedMonthKey) {
+              selectedMonth = item;
+              break;
+            }
+          }
+        }
+        selectedMonth ??= data.last;
+
+        final double selectedMonthKwh =
+            (selectedMonth['totalKwh'] ?? 0.0).toDouble();
+        final double selectedMonthCost =
+            (selectedMonth['totalCost'] ?? 0.0).toDouble();
+
         final theme = Theme.of(context);
         final bool isDark = theme.brightness == Brightness.dark;
         final Color primaryColor = theme.colorScheme.primary;
@@ -426,165 +777,213 @@ class _MonitoringChartCardState extends State<MonitoringChartCard> {
             .withAlpha(isDark ? 80 : 60);
         final Color tooltipTextColor = theme.colorScheme.onPrimary;
 
-        return SizedBox(
-          height: 200,
-          child: BarChart(
-            BarChartData(
-              minY: 0,
-              maxY: maxY,
-              gridData: FlGridData(show: false),
-              titlesData: FlTitlesData(
-                bottomTitles: AxisTitles(
-                  sideTitles: SideTitles(
-                    showTitles: true,
-                    interval: 1,
-                    getTitlesWidget: (value, _) {
-                      final idx = value.toInt();
-                      if (idx >= 0 && idx < data.length) {
-                        final monthStr = data[idx]['month'] as String?;
-                        if (monthStr != null) {
-                          try {
-                            final parts = monthStr.split('-');
-                            final monthInt =
-                                int.tryParse(
-                                  parts.length > 1 ? parts[1] : '0',
-                                ) ??
-                                0;
-                            return Padding(
-                              padding: const EdgeInsets.only(top: 8),
-                              child: Text(
-                                DateFormat(
-                                  'MMM',
-                                ).format(DateTime(2000, monthInt)),
-                                style: ResponsiveText.caption(context),
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Month selector + summary
+            Row(
+              children: [
+                if (sortedMonthKeys.isNotEmpty) ...[
+                  Text('Month:', style: ResponsiveText.body(context)),
+                  const SizedBox(width: 8),
+                  DropdownButton<String>(
+                    value: _selectedMonthKey,
+                    items:
+                        sortedMonthKeys
+                            .map(
+                              (key) => DropdownMenuItem<String>(
+                                value: key,
+                                child: Text(_formatMonthLabel(key)),
                               ),
-                            );
-                          } catch (e) {
+                            )
+                            .toList(),
+                    onChanged: (value) {
+                      if (value == null) return;
+                      setState(() {
+                        _selectedMonthKey = value;
+                      });
+                    },
+                  ),
+                ],
+              ],
+            ),
+            const SizedBox(height: 8),
+            Text(
+              'Selected month total: ${selectedMonthKwh.toStringAsFixed(2)} kWh • ₱${selectedMonthCost.toStringAsFixed(2)}',
+              style: ResponsiveText.body(
+                context,
+              ).copyWith(fontWeight: FontWeight.w600),
+            ),
+            const SizedBox(height: 8),
+            SizedBox(
+              height: 200,
+              child: BarChart(
+                BarChartData(
+                  minY: 0,
+                  maxY: maxY,
+                  gridData: FlGridData(show: false),
+                  titlesData: FlTitlesData(
+                    bottomTitles: AxisTitles(
+                      sideTitles: SideTitles(
+                        showTitles: true,
+                        interval: 1,
+                        getTitlesWidget: (value, _) {
+                          final idx = value.toInt();
+                          if (idx >= 0 && idx < data.length) {
+                            final monthStr = data[idx]['month'] as String?;
+                            if (monthStr != null) {
+                              try {
+                                final parts = monthStr.split('-');
+                                final monthInt =
+                                    int.tryParse(
+                                      parts.length > 1 ? parts[1] : '0',
+                                    ) ??
+                                    0;
+                                return Padding(
+                                  padding: const EdgeInsets.only(top: 8),
+                                  child: Text(
+                                    DateFormat(
+                                      'MMM',
+                                    ).format(DateTime(2000, monthInt)),
+                                    style: ResponsiveText.caption(context),
+                                  ),
+                                );
+                              } catch (e) {
+                                return Text(
+                                  '',
+                                  style: ResponsiveText.caption(context),
+                                );
+                              }
+                            }
+                          }
+                          return Text(
+                            '',
+                            style: ResponsiveText.caption(context),
+                          );
+                        },
+                      ),
+                    ),
+                    leftTitles: AxisTitles(
+                      sideTitles: SideTitles(
+                        showTitles: true,
+                        interval: maxY / 5,
+                        reservedSize: 40,
+                        getTitlesWidget: (value, _) {
+                          if (useCost) {
                             return Text(
-                              '',
+                              '₱${value.toStringAsFixed(0)}',
                               style: ResponsiveText.caption(context),
                             );
                           }
-                        }
-                      }
-                      return Text('', style: ResponsiveText.caption(context));
-                    },
-                  ),
-                ),
-                leftTitles: AxisTitles(
-                  sideTitles: SideTitles(
-                    showTitles: true,
-                    interval: maxY / 5,
-                    reservedSize: 40,
-                    getTitlesWidget: (value, _) {
-                      if (useCost) {
-                        return Text(
-                          '₱${value.toStringAsFixed(0)}',
-                          style: ResponsiveText.caption(context),
-                        );
-                      }
-                      return Text(
-                        value.toStringAsFixed(0),
-                        style: ResponsiveText.caption(context),
-                      );
-                    },
-                  ),
-                ),
-                topTitles: const AxisTitles(
-                  sideTitles: SideTitles(showTitles: false),
-                ),
-                rightTitles: const AxisTitles(
-                  sideTitles: SideTitles(showTitles: false),
-                ),
-              ),
-              borderData: FlBorderData(show: false),
-              barGroups: List.generate(data.length, (i) {
-                final value =
-                    useCost
-                        ? (data[i]['totalCost'] ?? 0.0).toDouble()
-                        : (data[i]['totalKwh'] ?? 0.0).toDouble();
-                final kwh = (data[i]['totalKwh'] ?? 0.0).toDouble();
-                final isCurrentMonth = i == (data.length - 1);
-
-                return BarChartGroupData(
-                  x: i,
-                  barRods: [
-                    BarChartRodData(
-                      toY: value,
-                      width: 20,
-                      color:
-                          isCurrentMonth
-                              ? null
-                              : _resolveConsumptionColor(context, kwh),
-                      gradient:
-                          isCurrentMonth
-                              ? LinearGradient(
-                                colors: [secondaryColor, tertiaryColor],
-                              )
-                              : null,
-                      borderRadius: const BorderRadius.vertical(
-                        top: Radius.circular(4),
-                      ),
-                      backDrawRodData: BackgroundBarChartRodData(
-                        show: true,
-                        toY: maxY,
-                        color: backgroundRodColor,
+                          return Text(
+                            value.toStringAsFixed(0),
+                            style: ResponsiveText.caption(context),
+                          );
+                        },
                       ),
                     ),
-                  ],
-                );
-              }),
-              barTouchData: BarTouchData(
-                enabled: true,
-                touchTooltipData: BarTouchTooltipData(
-                  getTooltipColor:
-                      (group) => primaryColor.withAlpha((0.9 * 255).toInt()),
-                  getTooltipItem: (group, groupIndex, rod, rodIndex) {
-                    final idx = group.x.toInt();
-                    final kwh = (data[idx]['totalKwh'] ?? 0.0).toDouble();
-                    final cost = (data[idx]['totalCost'] ?? 0.0).toDouble();
-                    return BarTooltipItem(
-                      '${kwh.toStringAsFixed(2)} kWh\n₱${cost.toStringAsFixed(2)}',
-                      ResponsiveText.body(
-                        context,
-                      ).copyWith(color: tooltipTextColor),
+                    topTitles: const AxisTitles(
+                      sideTitles: SideTitles(showTitles: false),
+                    ),
+                    rightTitles: const AxisTitles(
+                      sideTitles: SideTitles(showTitles: false),
+                    ),
+                  ),
+                  borderData: FlBorderData(show: false),
+                  barGroups: List.generate(data.length, (i) {
+                    final value =
+                        useCost
+                            ? (data[i]['totalCost'] ?? 0.0).toDouble()
+                            : (data[i]['totalKwh'] ?? 0.0).toDouble();
+                    final kwh = (data[i]['totalKwh'] ?? 0.0).toDouble();
+                    final isCurrentMonth = i == (data.length - 1);
+
+                    return BarChartGroupData(
+                      x: i,
+                      barRods: [
+                        BarChartRodData(
+                          toY: value,
+                          width: 20,
+                          color:
+                              isCurrentMonth
+                                  ? null
+                                  : _resolveConsumptionColor(context, kwh),
+                          gradient:
+                              isCurrentMonth
+                                  ? LinearGradient(
+                                    colors: [secondaryColor, tertiaryColor],
+                                  )
+                                  : null,
+                          borderRadius: const BorderRadius.vertical(
+                            top: Radius.circular(4),
+                          ),
+                          backDrawRodData: BackgroundBarChartRodData(
+                            show: true,
+                            toY: maxY,
+                            color: backgroundRodColor,
+                          ),
+                        ),
+                      ],
                     );
-                  },
+                  }),
+                  barTouchData: BarTouchData(
+                    enabled: true,
+                    touchTooltipData: BarTouchTooltipData(
+                      getTooltipColor:
+                          (group) =>
+                              primaryColor.withAlpha((0.9 * 255).toInt()),
+                      getTooltipItem: (group, groupIndex, rod, rodIndex) {
+                        final idx = group.x.toInt();
+                        final kwh = (data[idx]['totalKwh'] ?? 0.0).toDouble();
+                        final cost = (data[idx]['totalCost'] ?? 0.0).toDouble();
+                        return BarTooltipItem(
+                          '${kwh.toStringAsFixed(2)} kWh\n₱${cost.toStringAsFixed(2)}',
+                          ResponsiveText.body(
+                            context,
+                          ).copyWith(color: tooltipTextColor),
+                        );
+                      },
+                    ),
+                  ),
                 ),
               ),
             ),
-          ),
+          ],
         );
       },
     );
   }
 
   Future<List<Map<String, dynamic>>> _getDailyData() async {
+    if (_dailyDataCache != null) return _dailyDataCache!;
     try {
-      AppLogger.i('[MonitoringChartCard] Fetching daily trends...');
-      final now = DateTime.now();
-      final startDate = now.subtract(const Duration(days: 7));
+      AppLogger.i('[MonitoringChartCard] Fetching daily trends for year...');
+      final startDate = DateTime(_currentYear, 1, 1);
+      final endDate = DateTime(_currentYear, 12, 31);
 
       // Try TrendsService first
-      final trendsData = await _trendsService.getDailyTrends(startDate, now);
+      final trendsData = await _trendsService.getDailyTrends(
+        startDate,
+        endDate,
+      );
       AppLogger.i(
         '[MonitoringChartCard] Daily trends from TrendsService: ${trendsData.length} records',
       );
 
       if (trendsData.isNotEmpty) {
-        return trendsData;
+        _dailyDataCache = trendsData;
+        return _dailyDataCache!;
       }
 
-      // Fallback: Try to get today's usage from Realtime DB and create daily data
+      // Fallback: try current day usage
       AppLogger.w(
         '[MonitoringChartCard] No daily trends found, trying Realtime DB fallback...',
       );
       final todayUsage = await _getTodayUsageFromRealtimeDB();
-
       if (todayUsage['totalKwh'] != null &&
           (todayUsage['totalKwh'] as double) > 0) {
-        final todayKey = DateFormat('yyyy-MM-dd').format(now);
-        final dailyData = [
+        final todayKey = DateFormat('yyyy-MM-dd').format(DateTime.now());
+        _dailyDataCache = [
           {
             'date': todayKey,
             'totalKwh': todayUsage['totalKwh'] ?? 0.0,
@@ -593,23 +992,19 @@ class _MonitoringChartCardState extends State<MonitoringChartCard> {
             'timestamp': DateTime.now(),
           },
         ];
-        AppLogger.i(
-          '[MonitoringChartCard] Created daily data from Realtime DB: ${dailyData.length} record',
-        );
-        return dailyData;
+        return _dailyDataCache!;
       }
 
-      AppLogger.w(
-        '[MonitoringChartCard] No daily data available from any source',
-      );
-      return [];
+      _dailyDataCache = [];
+      return _dailyDataCache!;
     } catch (e, stackTrace) {
       AppLogger.e(
         '[MonitoringChartCard] Error fetching daily data: $e',
         e,
         stackTrace,
       );
-      return [];
+      _dailyDataCache = [];
+      return _dailyDataCache!;
     }
   }
 
@@ -635,199 +1030,175 @@ class _MonitoringChartCardState extends State<MonitoringChartCard> {
   }
 
   Future<List<Map<String, dynamic>>> _getWeeklyData() async {
+    if (_weeklyDataCache != null) return _weeklyDataCache!;
     try {
-      AppLogger.i('[MonitoringChartCard] Fetching weekly trends...');
-      final now = DateTime.now();
-      final startDate = now.subtract(const Duration(days: 42)); // ~6 weeks
-
-      // Try TrendsService first
-      final weeklyTrends = await _trendsService.getWeeklyTrends(startDate, now);
       AppLogger.i(
-        '[MonitoringChartCard] Weekly trends from TrendsService: ${weeklyTrends.length} records',
+        '[MonitoringChartCard] Building weekly buckets from daily data...',
       );
+      final dailyData = await _getDailyData();
+      final List<Map<String, dynamic>> buckets = [];
 
-      if (weeklyTrends.isNotEmpty) {
-        return weeklyTrends;
+      for (int month = 1; month <= 12; month++) {
+        final monthKey = '${_currentYear}-${month.toString().padLeft(2, '0')}';
+        final daysInMonth = DateUtils.getDaysInMonth(_currentYear, month);
+        final totalWeeks = ((daysInMonth - 1) / 7).floor() + 1;
+        for (int week = 0; week < totalWeeks; week++) {
+          final startDay = week * 7 + 1;
+          final endDay = math.min(startDay + 6, daysInMonth);
+          final startDate = DateTime(_currentYear, month, startDay);
+          final endDate = DateTime(_currentYear, month, endDay);
+          buckets.add({
+            'monthKey': monthKey,
+            'week': '$monthKey-W${week + 1}',
+            'weekNumber': week + 1,
+            'startDate': DateFormat('yyyy-MM-dd').format(startDate),
+            'endDate': DateFormat('yyyy-MM-dd').format(endDate),
+            'totalKwh': 0.0,
+            'totalCost': 0.0,
+          });
+        }
       }
 
-      // Fallback: Aggregate from daily trends
-      AppLogger.w(
-        '[MonitoringChartCard] No weekly trends found, aggregating from daily trends...',
-      );
-      final dailyStartDate = now.subtract(const Duration(days: 42));
-      final dailyTrends = await _trendsService.getDailyTrends(
-        dailyStartDate,
-        now,
-      );
+      // Map for quick lookup
+      final Map<String, Map<String, dynamic>> bucketMap = {
+        for (final bucket in buckets) bucket['week'] as String: bucket,
+      };
 
-      if (dailyTrends.isNotEmpty) {
-        final weeklyData = _aggregateDailyToWeekly(dailyTrends);
-        AppLogger.i(
-          '[MonitoringChartCard] Created weekly data from daily trends: ${weeklyData.length} records',
-        );
-        return weeklyData;
+      for (final entry in dailyData) {
+        final dateStr = entry['date'] as String?;
+        if (dateStr == null) continue;
+        try {
+          final date = DateTime.parse(dateStr);
+          if (date.year != _currentYear) continue;
+          final monthKey =
+              '${date.year}-${date.month.toString().padLeft(2, '0')}';
+          final weekNumber = ((date.day - 1) / 7).floor() + 1;
+          final bucketKey = '$monthKey-W$weekNumber';
+          final bucket = bucketMap[bucketKey];
+          if (bucket != null) {
+            bucket['totalKwh'] =
+                (bucket['totalKwh'] as double) +
+                ((entry['totalKwh'] ?? 0.0) as num).toDouble();
+            bucket['totalCost'] =
+                (bucket['totalCost'] as double) +
+                ((entry['totalCost'] ?? 0.0) as num).toDouble();
+          }
+        } catch (_) {
+          continue;
+        }
       }
 
-      AppLogger.w(
-        '[MonitoringChartCard] No weekly data available from any source',
-      );
-      return [];
+      _weeklyDataCache = buckets;
+      return _weeklyDataCache!;
     } catch (e, stackTrace) {
       AppLogger.e(
-        '[MonitoringChartCard] Error fetching weekly data: $e',
+        '[MonitoringChartCard] Error building weekly data: $e',
         e,
         stackTrace,
       );
-      return [];
+      _weeklyDataCache = [];
+      return _weeklyDataCache!;
     }
-  }
-
-  List<Map<String, dynamic>> _aggregateDailyToWeekly(
-    List<Map<String, dynamic>> dailyTrends,
-  ) {
-    final Map<String, Map<String, dynamic>> weeklyMap = {};
-
-    for (final daily in dailyTrends) {
-      final dateStr = daily['date'] as String?;
-      if (dateStr == null) continue;
-
-      try {
-        final date = DateTime.parse(dateStr);
-        final weekStart = date.subtract(Duration(days: date.weekday - 1));
-        final weekKey = '${weekStart.year}-W${_getWeekNumber(weekStart)}';
-
-        if (!weeklyMap.containsKey(weekKey)) {
-          weeklyMap[weekKey] = {
-            'week': weekKey,
-            'startDate': DateFormat('yyyy-MM-dd').format(weekStart),
-            'endDate': DateFormat(
-              'yyyy-MM-dd',
-            ).format(weekStart.add(const Duration(days: 6))),
-            'totalKwh': 0.0,
-            'totalCost': 0.0,
-            'totalUsageTime': 0,
-            'timestamp': weekStart,
-          };
-        }
-
-        weeklyMap[weekKey]!['totalKwh'] =
-            (weeklyMap[weekKey]!['totalKwh'] as double) +
-            (daily['totalKwh'] ?? 0.0).toDouble();
-        weeklyMap[weekKey]!['totalCost'] =
-            (weeklyMap[weekKey]!['totalCost'] as double) +
-            (daily['totalCost'] ?? 0.0).toDouble();
-        weeklyMap[weekKey]!['totalUsageTime'] =
-            (weeklyMap[weekKey]!['totalUsageTime'] as int) +
-                    (daily['totalUsageTime'] ?? 0)
-                as int;
-      } catch (e) {
-        AppLogger.w(
-          '[MonitoringChartCard] Error parsing date in daily trends: $e',
-        );
-      }
-    }
-
-    return weeklyMap.values.toList()..sort((a, b) {
-      final aDate = a['startDate'] as String;
-      final bDate = b['startDate'] as String;
-      return aDate.compareTo(bDate);
-    });
-  }
-
-  int _getWeekNumber(DateTime date) {
-    final firstDayOfYear = DateTime(date.year, 1, 1);
-    final daysSinceFirstDay = date.difference(firstDayOfYear).inDays;
-    final weekNumber =
-        ((daysSinceFirstDay + firstDayOfYear.weekday) / 7).ceil();
-    return weekNumber;
   }
 
   Future<List<Map<String, dynamic>>> _getMonthlyData() async {
+    if (_monthlyDataCache != null) return _monthlyDataCache!;
     try {
-      AppLogger.i('[MonitoringChartCard] Fetching monthly trends...');
+      List<Map<String, dynamic>> source = [];
+      bool hasSource = false;
 
-      // Try to get data from dataset reference first (cloud storage)
       try {
         final datasetData =
             await _monitoringDatasetService.getMonthlyDataForCharts();
         AppLogger.i(
           '[MonitoringChartCard] Monthly data from dataset reference: ${datasetData.length} records',
         );
-
         if (datasetData.isNotEmpty) {
-          return datasetData;
-        }
-
-        // If dataset exists but is empty, try to force update
-        AppLogger.w(
-          '[MonitoringChartCard] Dataset reference is empty, attempting to update...',
-        );
-        final updated =
-            await _monitoringDatasetService.updateDatasetReference();
-        if (updated) {
-          final updatedData =
-              await _monitoringDatasetService.getMonthlyDataForCharts();
-          if (updatedData.isNotEmpty) {
-            AppLogger.i(
-              '[MonitoringChartCard] Monthly data after update: ${updatedData.length} records',
-            );
-            return updatedData;
+          source = datasetData;
+          hasSource = true;
+        } else {
+          AppLogger.w(
+            '[MonitoringChartCard] Dataset reference empty, attempting update...',
+          );
+          final updated =
+              await _monitoringDatasetService.updateDatasetReference();
+          if (updated) {
+            final updatedData =
+                await _monitoringDatasetService.getMonthlyDataForCharts();
+            if (updatedData.isNotEmpty) {
+              source = updatedData;
+              hasSource = true;
+            }
           }
         }
       } catch (e) {
         AppLogger.w(
-          '[MonitoringChartCard] Error fetching from dataset reference: $e',
+          '[MonitoringChartCard] Error fetching dataset reference: $e',
         );
       }
 
-      // Fallback to TrendsService
-      AppLogger.i(
-        '[MonitoringChartCard] Falling back to TrendsService for monthly data...',
-      );
-      final now = DateTime.now();
-      final startDate = DateTime(now.year - 1, 1, 1);
-      final trendsData = await _trendsService.getMonthlyTrends(startDate, now);
-      AppLogger.i(
-        '[MonitoringChartCard] Monthly trends from TrendsService: ${trendsData.length} records',
-      );
-
-      if (trendsData.isNotEmpty) {
-        return trendsData;
-      }
-
-      // Last resort: Try to aggregate from daily/weekly trends
-      AppLogger.w(
-        '[MonitoringChartCard] No monthly trends found, attempting to aggregate from daily trends...',
-      );
-      final dailyStartDate = DateTime(
-        now.year,
-        now.month - 2,
-        1,
-      ); // Last 3 months
-      final dailyTrends = await _trendsService.getDailyTrends(
-        dailyStartDate,
-        now,
-      );
-
-      if (dailyTrends.isNotEmpty) {
-        final monthlyData = _aggregateDailyToMonthly(dailyTrends);
+      if (!hasSource) {
         AppLogger.i(
-          '[MonitoringChartCard] Created monthly data from daily trends: ${monthlyData.length} records',
+          '[MonitoringChartCard] Falling back to TrendsService for monthly data...',
         );
-        return monthlyData;
+        final startDate = DateTime(_currentYear, 1, 1);
+        final endDate = DateTime(_currentYear, 12, 31);
+        final trendsData = await _trendsService.getMonthlyTrends(
+          startDate,
+          endDate,
+        );
+        if (trendsData.isNotEmpty) {
+          source = trendsData;
+          hasSource = true;
+        }
       }
 
-      AppLogger.w(
-        '[MonitoringChartCard] No monthly data available from any source',
-      );
-      return [];
+      if (!hasSource) {
+        AppLogger.w(
+          '[MonitoringChartCard] Aggregating monthly data from daily cache...',
+        );
+        final dailyData = await _getDailyData();
+        source = _aggregateDailyToMonthly(dailyData);
+      }
+
+      final Map<String, Map<String, dynamic>> sourceMap = {};
+      for (final entry in source) {
+        final monthKey = entry['month'] as String?;
+        if (monthKey == null) continue;
+        sourceMap[monthKey] = entry;
+      }
+
+      final List<Map<String, dynamic>> months = [];
+      for (int month = 1; month <= 12; month++) {
+        final monthKey = '${_currentYear}-${month.toString().padLeft(2, '0')}';
+        final existing = sourceMap[monthKey];
+        months.add({
+          'month': monthKey,
+          'totalKwh': (existing?['totalKwh'] ?? 0.0).toDouble(),
+          'totalCost': (existing?['totalCost'] ?? 0.0).toDouble(),
+        });
+      }
+
+      _monthlyDataCache = months;
+      return _monthlyDataCache!;
     } catch (e, stackTrace) {
       AppLogger.e(
         '[MonitoringChartCard] Error fetching monthly data: $e',
         e,
         stackTrace,
       );
-      return [];
+      _monthlyDataCache =
+          _yearMonths
+              .map(
+                (month) => {
+                  'month':
+                      '${month.year}-${month.month.toString().padLeft(2, '0')}',
+                  'totalKwh': 0.0,
+                  'totalCost': 0.0,
+                },
+              )
+              .toList();
+      return _monthlyDataCache!;
     }
   }
 
@@ -924,6 +1295,163 @@ class _MonitoringChartCardState extends State<MonitoringChartCard> {
     final bool isDark = theme.brightness == Brightness.dark;
     final base = _getConsumptionColor(value);
     return isDark ? base.withAlpha((0.85 * 255).toInt()) : base;
+  }
+
+  String _formatMonthLabel(String monthKey) {
+    // monthKey is expected to be yyyy-MM
+    try {
+      final parts = monthKey.split('-');
+      final year = int.parse(parts[0]);
+      final month = int.parse(parts[1]);
+      final dt = DateTime(year, month, 1);
+      return DateFormat('MMMM yyyy').format(dt); // e.g. December 2025
+    } catch (_) {
+      return monthKey;
+    }
+  }
+
+  Widget _buildDailyMonthSelector(BuildContext context) {
+    return SingleChildScrollView(
+      scrollDirection: Axis.horizontal,
+      padding: EdgeInsets.only(bottom: Insets.xm),
+      child: Row(
+        children:
+            _yearMonths.map((month) {
+              final isSelected = month.month == _selectedDailyMonth.month;
+              final label = DateFormat('MMM').format(month);
+              return Padding(
+                padding: EdgeInsets.only(right: Insets.sm),
+                child: GestureDetector(
+                  onTap: () {
+                    setState(() {
+                      _selectedDailyMonth = month;
+                      final daysInMonth = DateUtils.getDaysInMonth(
+                        month.year,
+                        month.month,
+                      );
+                      _selectedDayNumber = math.min(
+                        _selectedDayNumber,
+                        daysInMonth,
+                      );
+                      _selectedDay = DateTime(
+                        month.year,
+                        month.month,
+                        _selectedDayNumber,
+                      );
+                      _selectedWeekMonthKey =
+                          '${month.year}-${month.month.toString().padLeft(2, '0')}';
+                      _selectedMonthKey = _selectedWeekMonthKey;
+                    });
+                  },
+                  child: AnimatedContainer(
+                    duration: const Duration(milliseconds: 200),
+                    padding: EdgeInsets.symmetric(
+                      horizontal: Insets.md,
+                      vertical: Insets.sm,
+                    ),
+                    decoration: BoxDecoration(
+                      color:
+                          isSelected
+                              ? Theme.of(context).colorScheme.primary
+                              : Theme.of(context).colorScheme.surface,
+                      borderRadius: BorderRadius.circular(16),
+                      border: Border.all(
+                        color:
+                            isSelected
+                                ? Theme.of(context).colorScheme.primary
+                                : Theme.of(
+                                  context,
+                                ).colorScheme.outlineVariant.withAlpha(120),
+                      ),
+                    ),
+                    child: Text(
+                      label,
+                      style: ResponsiveText.body(context).copyWith(
+                        color:
+                            isSelected
+                                ? Colors.white
+                                : Theme.of(context).textTheme.bodyLarge?.color,
+                        fontWeight:
+                            isSelected ? FontWeight.w600 : FontWeight.w400,
+                      ),
+                    ),
+                  ),
+                ),
+              );
+            }).toList(),
+      ),
+    );
+  }
+
+  Widget _buildDailyDaySelector(BuildContext context) {
+    final daysInMonth = DateUtils.getDaysInMonth(
+      _selectedDailyMonth.year,
+      _selectedDailyMonth.month,
+    );
+    return SizedBox(
+      height: 48,
+      child: ListView.separated(
+        scrollDirection: Axis.horizontal,
+        padding: EdgeInsets.symmetric(vertical: Insets.xm),
+        itemCount: daysInMonth,
+        separatorBuilder: (_, __) => SizedBox(width: Insets.xm),
+        itemBuilder: (context, index) {
+          final day = index + 1;
+          final isSelected = day == _selectedDayNumber;
+          return GestureDetector(
+            onTap: () {
+              if (isSelected) return;
+              setState(() {
+                _selectedDayNumber = day;
+                _selectedDay = DateTime(
+                  _selectedDailyMonth.year,
+                  _selectedDailyMonth.month,
+                  _selectedDayNumber,
+                );
+              });
+            },
+            child: Container(
+              width: 44,
+              alignment: Alignment.center,
+              decoration: BoxDecoration(
+                color:
+                    isSelected
+                        ? Theme.of(context).colorScheme.secondary
+                        : Theme.of(context).colorScheme.surface,
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(
+                  color:
+                      isSelected
+                          ? Theme.of(context).colorScheme.secondary
+                          : Theme.of(
+                            context,
+                          ).colorScheme.outlineVariant.withAlpha(120),
+                ),
+                boxShadow:
+                    isSelected
+                        ? [
+                          BoxShadow(
+                            color: Theme.of(
+                              context,
+                            ).colorScheme.secondary.withAlpha(64),
+                            blurRadius: 6,
+                            offset: const Offset(0, 2),
+                          ),
+                        ]
+                        : null,
+              ),
+              child: Text(
+                '$day',
+                style: ResponsiveText.body(context).copyWith(
+                  color: isSelected ? Colors.white : null,
+                  fontWeight: isSelected ? FontWeight.w600 : FontWeight.w400,
+                ),
+              ),
+            ),
+          );
+        },
+      ),
+    );
   }
 
   Widget _buildEmptyChart([String? message]) {

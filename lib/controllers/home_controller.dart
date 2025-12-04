@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import '../models/appliance_model.dart';
 import '../services/appliance_service.dart';
+import '../services/appliance_alias_service.dart';
 import '../services/energy_overview_service.dart';
 import '../services/usage_service.dart';
 import '../services/notification_service.dart';
@@ -20,9 +21,11 @@ class HomeController extends ChangeNotifier {
   final PowerRateService _powerRateService = PowerRateService();
   final ApplianceUsageService _applianceUsageService = ApplianceUsageService();
   final FirebaseAuth _auth = FirebaseAuth.instance;
+  final ApplianceAliasService _aliasService = ApplianceAliasService();
 
   // State variables
   List<ApplianceModel> _appliances = [];
+  Map<String, String> _applianceAliases = {};
   Map<String, dynamic> _energyOverviewData = {};
   Map<String, dynamic> _todayUsageData = {};
   List<Map<String, dynamic>> _recentActivities = [];
@@ -38,6 +41,7 @@ class HomeController extends ChangeNotifier {
 
   // Getters
   List<ApplianceModel> get appliances => _appliances;
+  Map<String, String> get applianceAliases => _applianceAliases;
   Map<String, dynamic> get energyOverviewData => _energyOverviewData;
   Map<String, dynamic> get todayUsageData => _todayUsageData;
   List<Map<String, dynamic>> get recentActivities => _recentActivities;
@@ -75,6 +79,7 @@ class HomeController extends ChangeNotifier {
 
       // Load initial data
       await _loadAppliances();
+      await _loadApplianceAliases();
       await _loadEnergyOverviewData();
       await _loadTodayUsageData();
       await _loadRecentActivities();
@@ -141,6 +146,17 @@ class HomeController extends ChangeNotifier {
       }
     } catch (e) {
       _setError('Failed to load appliances: $e');
+    }
+  }
+
+  // Load appliance aliases from Firestore
+  Future<void> _loadApplianceAliases() async {
+    try {
+      final aliases = await _aliasService.getAliases();
+      _applianceAliases = aliases;
+      notifyListeners();
+    } catch (e) {
+      AppLogger.w('[HomeController] Failed to load appliance aliases: $e');
     }
   }
 
@@ -440,6 +456,28 @@ class HomeController extends ChangeNotifier {
       _appliances[index] = appliance.copyWith(isOn: !isOn);
       notifyListeners();
       _setError('Failed to toggle appliance: $e');
+    }
+  }
+
+  /// Set / update appliance display name alias (UI-only, does not affect ESP32 DB paths).
+  Future<void> setApplianceAlias(String applianceId, String alias) async {
+    try {
+      await _aliasService.setAlias(applianceId, alias);
+      _applianceAliases[applianceId] = alias.trim();
+      notifyListeners();
+    } catch (e) {
+      _setError('Failed to update appliance name: $e');
+    }
+  }
+
+  /// Clear alias and revert to default appliance name.
+  Future<void> clearApplianceAlias(String applianceId) async {
+    try {
+      await _aliasService.clearAlias(applianceId);
+      _applianceAliases.remove(applianceId);
+      notifyListeners();
+    } catch (e) {
+      _setError('Failed to clear appliance name: $e');
     }
   }
 

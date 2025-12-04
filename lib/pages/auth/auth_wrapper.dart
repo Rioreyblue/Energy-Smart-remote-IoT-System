@@ -112,7 +112,8 @@ class _AuthWrapperState extends State<AuthWrapper> {
         location == '/login' ||
         location == '/register' ||
         location == '/onboarding' ||
-        location == '/terms';
+        location == '/terms' ||
+        location == '/sms';
 
     return StreamBuilder<User?>(
       stream: _authService.authStateChanges,
@@ -214,21 +215,30 @@ class _AuthWrapperState extends State<AuthWrapper> {
                     }
                   }
 
-                  // If not fully verified, show verification page
-                  if (!isFullyVerified && location == '/') {
-                    final emailVerified = user.isEmailVerified;
-                    return VerificationPage(
-                      verificationType: emailVerified ? 'phone' : 'email',
-                      contactInfo:
-                          emailVerified ? user.mobileNumber : user.email,
-                      firstName: user.firstName,
-                      lastName: user.lastName,
-                      middleName: user.middleName,
-                      mobileNumber: user.mobileNumber,
-                      email: user.email,
-                      energyProvider: user.energyProvider,
-                      address: user.address,
-                    );
+                  // If not fully verified, handle different paths
+                  if (!isFullyVerified) {
+                    // Allow /sms route for phone verification
+                    if (location == '/sms') {
+                      // Let GoRouter handle the /sms route (PhoneEntryPage)
+                      return const SizedBox.shrink();
+                    }
+
+                    // Show verification page at root
+                    if (location == '/') {
+                      final emailVerified = user.isEmailVerified;
+                      return VerificationPage(
+                        verificationType: emailVerified ? 'phone' : 'email',
+                        contactInfo:
+                            emailVerified ? user.mobileNumber : user.email,
+                        firstName: user.firstName,
+                        lastName: user.lastName,
+                        middleName: user.middleName,
+                        mobileNumber: user.mobileNumber,
+                        email: user.email,
+                        energyProvider: user.energyProvider,
+                        address: user.address,
+                      );
+                    }
                   }
 
                   // For other auth paths when authenticated but not verified, show login

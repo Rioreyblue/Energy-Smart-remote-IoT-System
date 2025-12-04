@@ -12,6 +12,7 @@ class SwitchCard extends StatefulWidget {
   final String timerText;
   final ValueChanged<bool> onToggle;
   final bool enabled;
+  final VoidCallback? onLongPress;
   const SwitchCard({
     required this.name,
     required this.icon,
@@ -21,6 +22,7 @@ class SwitchCard extends StatefulWidget {
     required this.timerText,
     required this.onToggle,
     this.enabled = true,
+    this.onLongPress,
     super.key,
   });
   @override
@@ -115,6 +117,7 @@ class _SwitchCardState extends State<SwitchCard> {
       onTapDown: (_) => setState(() => _isPressed = true),
       onTapUp: (_) => setState(() => _isPressed = false),
       onTapCancel: () => setState(() => _isPressed = false),
+      onLongPress: widget.onLongPress,
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 150),
         curve: Curves.easeOut,

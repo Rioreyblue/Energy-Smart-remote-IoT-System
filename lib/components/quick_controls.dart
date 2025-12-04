@@ -133,8 +133,12 @@ class _QuickControlsState extends State<QuickControls> {
     final cost = appliance.formatCost(controller.currentRate);
     final timerText = _formatTimerText(appliance);
 
+    // Display name can be customized per user without changing ESP32 DB paths.
+    final displayName =
+        controller.applianceAliases[appliance.id] ?? appliance.name;
+
     return SwitchCard(
-      name: appliance.name,
+      name: displayName,
       icon: appliance.getIconData(),
       isOn: appliance.isOn,
       label: 'Cost',
@@ -145,6 +149,57 @@ class _QuickControlsState extends State<QuickControls> {
         if (!isUserTypeEmpty) {
           controller.toggleAppliance(appliance.id, value);
         }
+      },
+      onLongPress: () async {
+        if (!isUserTypeEmpty) {
+          await _showRenameDialog(context, controller, appliance, displayName);
+        }
+      },
+    );
+  }
+
+  Future<void> _showRenameDialog(
+    BuildContext context,
+    HomeController controller,
+    ApplianceModel appliance,
+    String currentName,
+  ) async {
+    final textController = TextEditingController(text: currentName);
+
+    await showDialog<void>(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          title: const Text('Rename device'),
+          content: TextField(
+            controller: textController,
+            decoration: const InputDecoration(
+              labelText: 'Display name',
+              hintText: 'e.g. Living Room Fan',
+            ),
+            autofocus: true,
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(),
+              child: const Text('Cancel'),
+            ),
+            TextButton(
+              onPressed: () async {
+                final newName = textController.text.trim();
+                if (newName.isNotEmpty) {
+                  await controller.setApplianceAlias(appliance.id, newName);
+                } else {
+                  await controller.clearApplianceAlias(appliance.id);
+                }
+                if (context.mounted) {
+                  Navigator.of(context).pop();
+                }
+              },
+              child: const Text('Save'),
+            ),
+          ],
+        );
       },
     );
   }

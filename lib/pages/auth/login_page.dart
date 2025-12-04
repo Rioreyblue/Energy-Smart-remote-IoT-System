@@ -232,29 +232,45 @@ class _NewLoginPageState extends State<NewLoginPage> {
         if (isPhoneVerified) {
           await _showWelcomeAndNavigate(user);
         } else {
-          // Phone not verified - send SMS OTP and navigate to SMS entry page
-          try {
-            final phoneAuthService = context.read<PhoneAuthService>();
-            phoneAuthService.reset();
+          // Phone not verified - check if user has a phone number
+          final phoneAuthService = context.read<PhoneAuthService>();
+          phoneAuthService.reset();
 
-            // Send SMS OTP automatically for Google sign-in
-            await _authService.sendPhoneVerificationOtp(user.mobileNumber);
+          final hasPhoneNumber =
+              user.mobileNumber.isNotEmpty &&
+              user.mobileNumber.trim().isNotEmpty;
 
+          if (hasPhoneNumber) {
+            // User has phone number but not verified - send OTP automatically
+            try {
+              await _authService.sendPhoneVerificationOtp(user.mobileNumber);
+
+              if (mounted) {
+                AppSnackbar.showInfo(
+                  context,
+                  'Please verify your phone number. OTP sent to ${user.mobileNumber}',
+                );
+                // Navigate to SMS entry page (verification page)
+                context.go('/sms');
+              }
+            } catch (e) {
+              if (mounted) {
+                AppSnackbar.showWarning(
+                  context,
+                  'Please verify your phone number. Failed to send OTP: ${e.toString()}',
+                );
+                // Still navigate to SMS page so user can manually request OTP
+                context.go('/sms');
+              }
+            }
+          } else {
+            // User doesn't have phone number - navigate to phone entry page
             if (mounted) {
               AppSnackbar.showInfo(
                 context,
-                'Please verify your phone number. OTP sent to ${user.mobileNumber}',
+                'Please enter your phone number to complete verification.',
               );
-              // Navigate to SMS entry page
-              context.go('/sms');
-            }
-          } catch (e) {
-            if (mounted) {
-              AppSnackbar.showWarning(
-                context,
-                'Please verify your phone number. Failed to send OTP: ${e.toString()}',
-              );
-              // Still navigate to SMS page so user can manually request OTP
+              // Navigate to phone entry page to collect phone number first
               context.go('/sms');
             }
           }
