@@ -142,6 +142,13 @@ class _MonitoringChartCardState extends State<MonitoringChartCard>
   }
 
   Widget _buildChartSection(BuildContext context, String period) {
+    // Clear monthly cache when switching to monthly view to force refresh
+    if (period == 'Month') {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        _trendsService.clearMonthlyCache();
+      });
+    }
+
     switch (period) {
       case 'Day':
         return _ChartCard(
@@ -936,8 +943,9 @@ class _MonitoringChartCardState extends State<MonitoringChartCard>
   }
 
   Widget _buildMonthlyChart(BuildContext context) {
-    return FutureBuilder<List<Map<String, dynamic>>>(
-      future: _getMonthlyData(),
+    // Use StreamBuilder for real-time updates combined with periodic refresh
+    return StreamBuilder<List<Map<String, dynamic>>>(
+      stream: _getMonthlyDataStream(),
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting) {
           return SizedBox(
@@ -1241,6 +1249,94 @@ class _MonitoringChartCardState extends State<MonitoringChartCard>
     }
   }
 
+  /// Get current month's data from Realtime DB or by aggregating daily data
+  Future<Map<String, dynamic>> _getCurrentMonthRealtimeData() async {
+    try {
+      final userId = _auth.currentUser?.uid;
+      if (userId == null) {
+        return {};
+      }
+
+      final now = DateTime.now();
+      final currentMonthKey =
+          '${now.year}-${now.month.toString().padLeft(2, '0')}';
+
+      // Try Realtime DB first (if available)
+      try {
+        final snapshot =
+            await _database.ref('users/$userId/thisMonthUsage').get();
+        if (snapshot.exists && snapshot.value != null) {
+          final data = Map<String, dynamic>.from(snapshot.value as Map);
+          final monthKey = data['month'] as String?;
+
+          // Only use if it's for the current month
+          if (monthKey == currentMonthKey) {
+            final totalKwh = (data['totalKwh'] ?? 0.0).toDouble();
+            final totalCost = (data['totalCost'] ?? 0.0).toDouble();
+
+            return {
+              'month': currentMonthKey,
+              'totalKwh': totalKwh,
+              'totalCost': totalCost,
+              'totalUsageTime': data['totalUsageTime'] ?? 0,
+            };
+          }
+        }
+      } catch (e) {
+        AppLogger.w(
+          '[MonitoringChartCard] Error getting thisMonthUsage from RTDB: $e',
+        );
+      }
+
+      // Fallback: Aggregate from daily data for current month
+      try {
+        final dailyData = await _getDailyData();
+        final currentMonthData =
+            dailyData.where((entry) {
+              final dateStr = entry['date'] as String?;
+              if (dateStr == null) return false;
+              try {
+                final date = DateTime.parse(dateStr);
+                return date.year == now.year && date.month == now.month;
+              } catch (_) {
+                return false;
+              }
+            }).toList();
+
+        if (currentMonthData.isNotEmpty) {
+          double totalKwh = 0.0;
+          double totalCost = 0.0;
+          int totalUsageTime = 0;
+
+          for (final entry in currentMonthData) {
+            totalKwh += (entry['totalKwh'] ?? 0.0).toDouble();
+            totalCost += (entry['totalCost'] ?? 0.0).toDouble();
+            totalUsageTime += (entry['totalUsageTime'] ?? 0) as int;
+          }
+
+          return {
+            'month': currentMonthKey,
+            'totalKwh': totalKwh,
+            'totalCost': totalCost,
+            'totalUsageTime': totalUsageTime,
+          };
+        }
+      } catch (e) {
+        AppLogger.w(
+          '[MonitoringChartCard] Error aggregating current month from daily data: $e',
+        );
+      }
+
+      // If nothing found, return empty (will use 0.0 from existing logic)
+      return {};
+    } catch (e) {
+      AppLogger.e(
+        '[MonitoringChartCard] Error getting current month real-time data: $e',
+      );
+      return {};
+    }
+  }
+
   Future<List<Map<String, dynamic>>> _getWeeklyData() async {
     // Always build week buckets from daily data to ensure proper month-based weeks (4-5 weeks max per month)
     // This prevents issues with year-based week calculations that can span multiple months
@@ -1335,7 +1431,44 @@ class _MonitoringChartCardState extends State<MonitoringChartCard>
     }
   }
 
-  Future<List<Map<String, dynamic>>> _getMonthlyData() async {
+  /// Stream of monthly data that refreshes periodically and on demand
+  Stream<List<Map<String, dynamic>>> _getMonthlyDataStream() async* {
+    // Initial data fetch - don't clear cache immediately, let it load first
+    try {
+      yield await _getMonthlyDataInternal();
+    } catch (e) {
+      AppLogger.e(
+        '[MonitoringChartCard] Error in initial monthly data fetch: $e',
+      );
+      yield _yearMonths
+          .map(
+            (month) => {
+              'month':
+                  '${month.year}-${month.month.toString().padLeft(2, '0')}',
+              'totalKwh': 0.0,
+              'totalCost': 0.0,
+            },
+          )
+          .toList();
+    }
+
+    // Set up periodic refresh every 15 seconds for real-time updates (faster for current month)
+    await for (final _ in Stream.periodic(const Duration(seconds: 15))) {
+      try {
+        // Only clear monthly cache, keep daily cache for aggregation
+        _trendsService.clearMonthlyCache();
+        yield await _getMonthlyDataInternal();
+      } catch (e) {
+        AppLogger.e(
+          '[MonitoringChartCard] Error in periodic monthly data refresh: $e',
+        );
+        // Continue streaming even if there's an error
+        continue;
+      }
+    }
+  }
+
+  Future<List<Map<String, dynamic>>> _getMonthlyDataInternal() async {
     // Try TrendsService monthly trends first (uses service cache)
     final startDate = DateTime(_currentYear, 1, 1);
     final endDate = DateTime(_currentYear, 12, 31);
@@ -1348,8 +1481,8 @@ class _MonitoringChartCardState extends State<MonitoringChartCard>
         AppLogger.i(
           '[MonitoringChartCard] Using monthly trends from TrendsService: ${monthlyTrends.length} records',
         );
-        // Ensure all 12 months are represented
-        return _ensureFullYearMonths(monthlyTrends);
+        // Ensure all 12 months are represented, including current month real-time data
+        return await _ensureFullYearMonths(monthlyTrends);
       }
     } catch (e) {
       AppLogger.w(
@@ -1423,6 +1556,28 @@ class _MonitoringChartCardState extends State<MonitoringChartCard>
         sourceMap[monthKey] = entry;
       }
 
+      // Get current month's real-time data (even if incomplete)
+      final now = DateTime.now();
+      final currentMonthKey =
+          '${now.year}-${now.month.toString().padLeft(2, '0')}';
+
+      // If we're viewing the current year, get real-time data for current month
+      if (now.year == _currentYear) {
+        try {
+          final currentMonthData = await _getCurrentMonthRealtimeData();
+          if (currentMonthData.isNotEmpty) {
+            sourceMap[currentMonthKey] = currentMonthData;
+            AppLogger.i(
+              '[MonitoringChartCard] Updated current month with real-time data: ${currentMonthData['totalKwh']} kWh',
+            );
+          }
+        } catch (e) {
+          AppLogger.w(
+            '[MonitoringChartCard] Error getting current month real-time data: $e',
+          );
+        }
+      }
+
       final List<Map<String, dynamic>> months = [];
       for (int month = 1; month <= 12; month++) {
         final monthKey = '${_currentYear}-${month.toString().padLeft(2, '0')}';
@@ -1455,14 +1610,35 @@ class _MonitoringChartCardState extends State<MonitoringChartCard>
   }
 
   /// Ensure all 12 months are represented in monthly data
-  List<Map<String, dynamic>> _ensureFullYearMonths(
+  Future<List<Map<String, dynamic>>> _ensureFullYearMonths(
     List<Map<String, dynamic>> monthlyTrends,
-  ) {
+  ) async {
     final Map<String, Map<String, dynamic>> sourceMap = {};
     for (final entry in monthlyTrends) {
       final monthKey = entry['month'] as String?;
       if (monthKey == null) continue;
       sourceMap[monthKey] = entry;
+    }
+
+    // Get current month's real-time data (even if incomplete) for current year
+    final now = DateTime.now();
+    final currentMonthKey =
+        '${now.year}-${now.month.toString().padLeft(2, '0')}';
+
+    if (now.year == _currentYear) {
+      try {
+        final currentMonthData = await _getCurrentMonthRealtimeData();
+        if (currentMonthData.isNotEmpty) {
+          sourceMap[currentMonthKey] = currentMonthData;
+          AppLogger.i(
+            '[MonitoringChartCard] Updated current month with real-time data in _ensureFullYearMonths: ${currentMonthData['totalKwh']} kWh',
+          );
+        }
+      } catch (e) {
+        AppLogger.w(
+          '[MonitoringChartCard] Error getting current month real-time data in _ensureFullYearMonths: $e',
+        );
+      }
     }
 
     final List<Map<String, dynamic>> months = [];

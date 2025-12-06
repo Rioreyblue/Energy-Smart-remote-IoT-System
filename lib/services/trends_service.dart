@@ -43,6 +43,12 @@ class TrendsService {
     AppLogger.i('[TrendsService] Cache cleared');
   }
 
+  /// Clear only monthly cache (useful for real-time updates)
+  void clearMonthlyCache() {
+    _monthlyDataCache = null;
+    AppLogger.i('[TrendsService] Monthly cache cleared');
+  }
+
   /// Run daily aggregation from Realtime DB to Firestore
   Future<void> runDailyAggregation(DateTime date) async {
     final dateKey =
