@@ -21,6 +21,75 @@ class MonitoringChartCard extends StatefulWidget {
   State<MonitoringChartCard> createState() => _MonitoringChartCardState();
 }
 
+class _ChartColors {
+  final Color primaryColor;
+  final Color surfaceColor;
+  final Color tooltipTextColor;
+  final Color tooltipBackgroundColor;
+  final Color horizontalLineColor;
+  final Color gridLineColor;
+  final Color dotColor;
+  final Color dotStrokeColor;
+  final Color areaGradientColor;
+  final Color textColor;
+  final Color secondaryColor;
+  final Color tertiaryColor;
+  final Color backgroundRodColor;
+
+  _ChartColors({
+    required this.primaryColor,
+    required this.surfaceColor,
+    required this.tooltipTextColor,
+    required this.tooltipBackgroundColor,
+    required this.horizontalLineColor,
+    required this.gridLineColor,
+    required this.dotColor,
+    required this.dotStrokeColor,
+    required this.areaGradientColor,
+    required this.textColor,
+    required this.secondaryColor,
+    required this.tertiaryColor,
+    required this.backgroundRodColor,
+  });
+
+  factory _ChartColors.fromContext(BuildContext context) {
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+
+    return _ChartColors(
+      primaryColor: isDark ? AppColor.accentGreen : AppColor.primary,
+      surfaceColor: isDark ? AppColor.surfaceDark : AppColor.surface,
+      tooltipTextColor: isDark ? AppColor.textPrimaryDark : Colors.white,
+      tooltipBackgroundColor:
+          isDark
+              ? AppColor.primaryDark.withAlpha((0.9 * 255).toInt())
+              : AppColor.primary.withAlpha((0.9 * 255).toInt()),
+      horizontalLineColor:
+          isDark
+              ? AppColor.textSecondaryDark.withAlpha(110)
+              : AppColor.disabled.withAlpha(90),
+      gridLineColor:
+          isDark
+              ? AppColor.textSecondaryDark.withAlpha(80)
+              : AppColor.disabled.withAlpha(60),
+      dotColor: isDark ? AppColor.surfaceDark : AppColor.surface,
+      dotStrokeColor: isDark ? AppColor.accentGreen : AppColor.primary,
+      areaGradientColor:
+          isDark
+              ? AppColor.accentGreen.withAlpha((0.15 * 255).toInt())
+              : AppColor.primary.withAlpha((0.12 * 255).toInt()),
+      textColor: isDark ? AppColor.textPrimaryDark : AppColor.textPrimary,
+      secondaryColor: AppColor.accentGreen,
+      tertiaryColor:
+          isDark ? AppColor.accentGreen.withAlpha(200) : AppColor.accentGreen,
+      backgroundRodColor:
+          isDark
+              ? AppColor.textSecondaryDark.withAlpha(80)
+              : AppColor.disabled.withAlpha(60),
+    );
+  }
+}
+
 class _MonitoringChartCardState extends State<MonitoringChartCard> {
   final TrendsService _trendsService = TrendsService();
   final MonitoringDatasetService _monitoringDatasetService =
@@ -111,7 +180,7 @@ class _MonitoringChartCardState extends State<MonitoringChartCard> {
 
   Widget _buildDailyChart(BuildContext context) {
     return FutureBuilder<List<Map<String, dynamic>>>(
-      future: _getDailyData(),
+      future: _getDailyDataForSelectedMonth(),
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting) {
           return SizedBox(
@@ -134,14 +203,17 @@ class _MonitoringChartCardState extends State<MonitoringChartCard> {
           return _buildEmptyChart('No daily data available');
         }
 
-        final data = snapshot.data!;
+        final allMonthData = snapshot.data!;
+
+        // Filter to show only 7 days: 3 days before selected, selected day, 3 days after
+        final chartData = _getSevenDayWindow(allMonthData, _selectedDay);
 
         // Compute summary for the selected day (if present)
         final String selectedKey = DateFormat(
           'yyyy-MM-dd',
         ).format(_selectedDay);
         Map<String, dynamic>? selectedEntry;
-        for (final item in data) {
+        for (final item in allMonthData) {
           if (item['date'] == selectedKey) {
             selectedEntry = item;
             break;
@@ -152,20 +224,11 @@ class _MonitoringChartCardState extends State<MonitoringChartCard> {
         final double selectedCost =
             (selectedEntry?['totalCost'] ?? 0.0).toDouble();
 
-        final spots = _buildSpots(data, _selectedMetric);
+        final spots = _buildSpots(chartData, _selectedMetric);
         final useCost = _selectedMetric == ChartMetric.cost;
-        final maxY = _calculateMaxValue(data, useCost: useCost) * 1.2;
+        final maxY = _calculateMaxValue(chartData, useCost: useCost) * 1.2;
 
-        final theme = Theme.of(context);
-        final bool isDark = theme.brightness == Brightness.dark;
-        final Color primaryColor = theme.colorScheme.primary;
-        final Color surfaceColor = theme.colorScheme.surface;
-        final Color tooltipTextColor = theme.colorScheme.onPrimary;
-        final Color horizontalLineColor = theme.colorScheme.outlineVariant
-            .withAlpha(isDark ? 110 : 90);
-        final Color tooltipBackgroundColor = primaryColor.withAlpha(
-          (0.9 * 255).toInt(),
-        );
+        final chartColors = _ChartColors.fromContext(context);
 
         final bool hasSelectedData = selectedEntry != null;
 
@@ -206,8 +269,10 @@ class _MonitoringChartCardState extends State<MonitoringChartCard> {
                     show: true,
                     horizontalInterval: maxY / 5,
                     getDrawingHorizontalLine:
-                        (value) =>
-                            FlLine(color: horizontalLineColor, strokeWidth: 1),
+                        (value) => FlLine(
+                          color: chartColors.horizontalLineColor,
+                          strokeWidth: 1,
+                        ),
                   ),
                   titlesData: FlTitlesData(
                     bottomTitles: AxisTitles(
@@ -216,8 +281,8 @@ class _MonitoringChartCardState extends State<MonitoringChartCard> {
                         interval: 1,
                         getTitlesWidget: (value, _) {
                           final idx = value.toInt();
-                          if (idx >= 0 && idx < data.length) {
-                            final dateStr = data[idx]['date'] as String?;
+                          if (idx >= 0 && idx < chartData.length) {
+                            final dateStr = chartData[idx]['date'] as String?;
                             if (dateStr != null) {
                               try {
                                 final date = DateTime.parse(dateStr);
@@ -274,20 +339,20 @@ class _MonitoringChartCardState extends State<MonitoringChartCard> {
                     LineChartBarData(
                       spots: spots,
                       isCurved: true,
-                      color: primaryColor,
+                      color: chartColors.primaryColor,
                       barWidth: 3,
                       belowBarData: BarAreaData(
                         show: true,
-                        color: primaryColor.withAlpha((0.12 * 255).toInt()),
+                        color: chartColors.areaGradientColor,
                       ),
                       dotData: FlDotData(
                         show: true,
                         getDotPainter: (spot, percent, barData, index) {
                           return FlDotCirclePainter(
                             radius: 4,
-                            color: surfaceColor,
+                            color: chartColors.dotColor,
                             strokeWidth: 2,
-                            strokeColor: primaryColor,
+                            strokeColor: chartColors.dotStrokeColor,
                           );
                         },
                       ),
@@ -296,18 +361,28 @@ class _MonitoringChartCardState extends State<MonitoringChartCard> {
                   lineTouchData: LineTouchData(
                     enabled: true,
                     touchTooltipData: LineTouchTooltipData(
-                      getTooltipColor: (spots) => tooltipBackgroundColor,
+                      getTooltipColor:
+                          (spots) => chartColors.tooltipBackgroundColor,
                       getTooltipItems:
                           (touchedSpots) =>
                               touchedSpots.map((spot) {
                                 final idx = spot.x.toInt();
-                                final kwh = data[idx]['totalKwh'] ?? 0.0;
-                                final cost = data[idx]['totalCost'] ?? 0.0;
+                                if (idx >= 0 && idx < chartData.length) {
+                                  final kwh = chartData[idx]['totalKwh'] ?? 0.0;
+                                  final cost =
+                                      chartData[idx]['totalCost'] ?? 0.0;
+                                  return LineTooltipItem(
+                                    '${kwh.toStringAsFixed(2)} kWh\n₱${cost.toStringAsFixed(2)}',
+                                    ResponsiveText.body(context).copyWith(
+                                      color: chartColors.tooltipTextColor,
+                                    ),
+                                  );
+                                }
                                 return LineTooltipItem(
-                                  '${kwh.toStringAsFixed(2)} kWh\n₱${cost.toStringAsFixed(2)}',
-                                  ResponsiveText.body(
-                                    context,
-                                  ).copyWith(color: tooltipTextColor),
+                                  '',
+                                  ResponsiveText.body(context).copyWith(
+                                    color: chartColors.tooltipTextColor,
+                                  ),
                                 );
                               }).toList(),
                     ),
@@ -418,16 +493,7 @@ class _MonitoringChartCardState extends State<MonitoringChartCard> {
         final useCost = _selectedMetric == ChartMetric.cost;
         final maxY = _calculateMaxValue(effectiveWeeks, useCost: useCost) * 1.2;
 
-        final theme = Theme.of(context);
-        final bool isDark = theme.brightness == Brightness.dark;
-        final Color primaryColor = theme.colorScheme.primary;
-        final Color surfaceColor = theme.colorScheme.surface;
-        final Color tooltipTextColor = theme.colorScheme.onPrimary;
-        final Color horizontalLineColor = theme.colorScheme.outlineVariant
-            .withAlpha(isDark ? 110 : 90);
-        final Color tooltipBackgroundColor = primaryColor.withAlpha(
-          (0.9 * 255).toInt(),
-        );
+        final chartColors = _ChartColors.fromContext(context);
 
         return Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -602,8 +668,10 @@ class _MonitoringChartCardState extends State<MonitoringChartCard> {
                     show: true,
                     horizontalInterval: maxY / 5,
                     getDrawingHorizontalLine:
-                        (value) =>
-                            FlLine(color: horizontalLineColor, strokeWidth: 1),
+                        (value) => FlLine(
+                          color: chartColors.horizontalLineColor,
+                          strokeWidth: 1,
+                        ),
                   ),
                   titlesData: FlTitlesData(
                     bottomTitles: AxisTitles(
@@ -660,20 +728,20 @@ class _MonitoringChartCardState extends State<MonitoringChartCard> {
                     LineChartBarData(
                       spots: spots,
                       isCurved: true,
-                      color: primaryColor,
+                      color: chartColors.primaryColor,
                       barWidth: 3,
                       belowBarData: BarAreaData(
                         show: true,
-                        color: primaryColor.withAlpha((0.12 * 255).toInt()),
+                        color: chartColors.areaGradientColor,
                       ),
                       dotData: FlDotData(
                         show: true,
                         getDotPainter: (spot, percent, barData, index) {
                           return FlDotCirclePainter(
                             radius: 4,
-                            color: surfaceColor,
+                            color: chartColors.dotColor,
                             strokeWidth: 2,
-                            strokeColor: primaryColor,
+                            strokeColor: chartColors.dotStrokeColor,
                           );
                         },
                       ),
@@ -682,7 +750,8 @@ class _MonitoringChartCardState extends State<MonitoringChartCard> {
                   lineTouchData: LineTouchData(
                     enabled: true,
                     touchTooltipData: LineTouchTooltipData(
-                      getTooltipColor: (spots) => tooltipBackgroundColor,
+                      getTooltipColor:
+                          (spots) => chartColors.tooltipBackgroundColor,
                       getTooltipItems:
                           (touchedSpots) =>
                               touchedSpots.map((spot) {
@@ -693,9 +762,9 @@ class _MonitoringChartCardState extends State<MonitoringChartCard> {
                                     effectiveWeeks[idx]['totalCost'] ?? 0.0;
                                 return LineTooltipItem(
                                   '${kwh.toStringAsFixed(2)} kWh\n₱${cost.toStringAsFixed(2)}',
-                                  ResponsiveText.body(
-                                    context,
-                                  ).copyWith(color: tooltipTextColor),
+                                  ResponsiveText.body(context).copyWith(
+                                    color: chartColors.tooltipTextColor,
+                                  ),
                                 );
                               }).toList(),
                     ),
@@ -768,14 +837,7 @@ class _MonitoringChartCardState extends State<MonitoringChartCard> {
         final double selectedMonthCost =
             (selectedMonth['totalCost'] ?? 0.0).toDouble();
 
-        final theme = Theme.of(context);
-        final bool isDark = theme.brightness == Brightness.dark;
-        final Color primaryColor = theme.colorScheme.primary;
-        final Color secondaryColor = theme.colorScheme.secondary;
-        final Color tertiaryColor = theme.colorScheme.tertiary;
-        final Color backgroundRodColor = theme.colorScheme.outlineVariant
-            .withAlpha(isDark ? 80 : 60);
-        final Color tooltipTextColor = theme.colorScheme.onPrimary;
+        final chartColors = _ChartColors.fromContext(context);
 
         return Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -911,7 +973,10 @@ class _MonitoringChartCardState extends State<MonitoringChartCard> {
                           gradient:
                               isCurrentMonth
                                   ? LinearGradient(
-                                    colors: [secondaryColor, tertiaryColor],
+                                    colors: [
+                                      chartColors.secondaryColor,
+                                      chartColors.tertiaryColor,
+                                    ],
                                   )
                                   : null,
                           borderRadius: const BorderRadius.vertical(
@@ -920,7 +985,7 @@ class _MonitoringChartCardState extends State<MonitoringChartCard> {
                           backDrawRodData: BackgroundBarChartRodData(
                             show: true,
                             toY: maxY,
-                            color: backgroundRodColor,
+                            color: chartColors.backgroundRodColor,
                           ),
                         ),
                       ],
@@ -930,8 +995,7 @@ class _MonitoringChartCardState extends State<MonitoringChartCard> {
                     enabled: true,
                     touchTooltipData: BarTouchTooltipData(
                       getTooltipColor:
-                          (group) =>
-                              primaryColor.withAlpha((0.9 * 255).toInt()),
+                          (group) => chartColors.tooltipBackgroundColor,
                       getTooltipItem: (group, groupIndex, rod, rodIndex) {
                         final idx = group.x.toInt();
                         final kwh = (data[idx]['totalKwh'] ?? 0.0).toDouble();
@@ -940,7 +1004,7 @@ class _MonitoringChartCardState extends State<MonitoringChartCard> {
                           '${kwh.toStringAsFixed(2)} kWh\n₱${cost.toStringAsFixed(2)}',
                           ResponsiveText.body(
                             context,
-                          ).copyWith(color: tooltipTextColor),
+                          ).copyWith(color: chartColors.tooltipTextColor),
                         );
                       },
                     ),
@@ -1297,6 +1361,135 @@ class _MonitoringChartCardState extends State<MonitoringChartCard> {
     return isDark ? base.withAlpha((0.85 * 255).toInt()) : base;
   }
 
+  /// Get daily data filtered for the selected month only
+  Future<List<Map<String, dynamic>>> _getDailyDataForSelectedMonth() async {
+    try {
+      final allData = await _getDailyData();
+
+      // Filter to only include data from the selected month
+      final String selectedMonthKey = DateFormat(
+        'yyyy-MM',
+      ).format(_selectedDailyMonth);
+      final List<Map<String, dynamic>> monthData =
+          allData.where((item) {
+            final dateStr = item['date'] as String?;
+            if (dateStr == null) return false;
+            try {
+              final d = DateTime.parse(dateStr);
+              return DateFormat('yyyy-MM').format(d) == selectedMonthKey;
+            } catch (_) {
+              return false;
+            }
+          }).toList();
+
+      // Generate all days for the selected month, even if no data
+      final int daysInMonth = DateUtils.getDaysInMonth(
+        _selectedDailyMonth.year,
+        _selectedDailyMonth.month,
+      );
+      final List<Map<String, dynamic>> fullMonthData = List.generate(
+        daysInMonth,
+        (index) {
+          final day = index + 1;
+          final date = DateTime(
+            _selectedDailyMonth.year,
+            _selectedDailyMonth.month,
+            day,
+          );
+          final dateKey = DateFormat('yyyy-MM-dd').format(date);
+          final existingData = monthData.firstWhere(
+            (item) => item['date'] == dateKey,
+            orElse:
+                () => {
+                  'date': dateKey,
+                  'totalKwh': 0.0,
+                  'totalCost': 0.0,
+                  'totalUsageTime': 0,
+                  'timestamp': date,
+                },
+          );
+          return existingData;
+        },
+      );
+
+      return fullMonthData;
+    } catch (e, stackTrace) {
+      AppLogger.e(
+        '[MonitoringChartCard] Error fetching daily data for selected month: $e',
+        e,
+        stackTrace,
+      );
+      return [];
+    }
+  }
+
+  /// Get 7-day window around the selected date (3 days before, selected day, 3 days after)
+  List<Map<String, dynamic>> _getSevenDayWindow(
+    List<Map<String, dynamic>> allMonthData,
+    DateTime selectedDay,
+  ) {
+    final List<Map<String, dynamic>> window = [];
+
+    // Find the index of the selected day in the month data
+    final String selectedKey = DateFormat('yyyy-MM-dd').format(selectedDay);
+    int selectedIndex = -1;
+    for (int i = 0; i < allMonthData.length; i++) {
+      if (allMonthData[i]['date'] == selectedKey) {
+        selectedIndex = i;
+        break;
+      }
+    }
+
+    if (selectedIndex == -1) {
+      // Selected day not found, create a 7-day window ending at selected day
+      final int selectedDayNumber = selectedDay.day;
+      final int startDay = math.max(1, selectedDayNumber - 6);
+      final int endDay = selectedDayNumber;
+
+      for (int day = startDay; day <= endDay; day++) {
+        final date = DateTime(selectedDay.year, selectedDay.month, day);
+        final dateKey = DateFormat('yyyy-MM-dd').format(date);
+        final existingData = allMonthData.firstWhere(
+          (item) => item['date'] == dateKey,
+          orElse:
+              () => {
+                'date': dateKey,
+                'totalKwh': 0.0,
+                'totalCost': 0.0,
+                'totalUsageTime': 0,
+                'timestamp': date,
+              },
+        );
+        window.add(existingData);
+      }
+    } else {
+      // Start from 3 days before selected day, or day 1 of month if earlier
+      final int startIndex = math.max(0, selectedIndex - 3);
+      // End at 3 days after selected day, or last day of month if later
+      final int endIndex = math.min(allMonthData.length - 1, selectedIndex + 3);
+
+      // Extract the 7-day window (or less if at month boundaries)
+      for (int i = startIndex; i <= endIndex; i++) {
+        window.add(allMonthData[i]);
+      }
+
+      // If we have less than 7 days, pad from the other side
+      while (window.length < 7 && window.length < allMonthData.length) {
+        if (startIndex > 0) {
+          // Add from before
+          window.insert(0, allMonthData[startIndex - 1]);
+        } else if (endIndex < allMonthData.length - 1) {
+          // Add from after
+          window.add(allMonthData[endIndex + 1]);
+        } else {
+          break;
+        }
+      }
+    }
+
+    return window;
+  }
+
   String _formatMonthLabel(String monthKey) {
     // monthKey is expected to be yyyy-MM
     try {
@@ -1341,6 +1534,8 @@ class _MonitoringChartCardState extends State<MonitoringChartCard> {
                       _selectedWeekMonthKey =
                           '${month.year}-${month.month.toString().padLeft(2, '0')}';
                       _selectedMonthKey = _selectedWeekMonthKey;
+                      // Clear cache to force refresh when month changes
+                      _dailyDataCache = null;
                     });
                   },
                   child: AnimatedContainer(
@@ -1456,13 +1651,17 @@ class _MonitoringChartCardState extends State<MonitoringChartCard> {
 
   Widget _buildEmptyChart([String? message]) {
     final theme = Theme.of(context);
-    final bool isDark = theme.brightness == Brightness.dark;
-    final Color iconColor = theme.colorScheme.outline;
-    final Color primaryTextColor = theme.colorScheme.onSurface.withAlpha(
-      isDark ? 190 : 210,
-    );
-    final Color secondaryTextColor = theme.colorScheme.onSurfaceVariant
-        .withAlpha(isDark ? 180 : 200);
+    final isDark = theme.brightness == Brightness.dark;
+    final Color iconColor =
+        isDark ? AppColor.textSecondaryDark : AppColor.disabled;
+    final Color primaryTextColor =
+        isDark
+            ? AppColor.textPrimaryDark.withAlpha(190)
+            : AppColor.textPrimary.withAlpha(210);
+    final Color secondaryTextColor =
+        isDark
+            ? AppColor.textSecondaryDark.withAlpha(180)
+            : AppColor.textSecondary.withAlpha(200);
 
     return SizedBox(
       height: 180,
@@ -1495,9 +1694,11 @@ class _MonitoringChartCardState extends State<MonitoringChartCard> {
 
   Widget _buildErrorChart(String error) {
     final theme = Theme.of(context);
-    final Color iconColor = theme.colorScheme.error;
-    final Color headlineColor = theme.colorScheme.error;
-    final Color messageColor = theme.colorScheme.onSurfaceVariant;
+    final isDark = theme.brightness == Brightness.dark;
+    final Color iconColor = AppColor.accentRed;
+    final Color headlineColor = AppColor.accentRed;
+    final Color messageColor =
+        isDark ? AppColor.textSecondaryDark : AppColor.textSecondary;
 
     return SizedBox(
       height: 180,
@@ -1545,9 +1746,10 @@ class _ChartCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final bool isDark = theme.brightness == Brightness.dark;
-    final Color cardColor = theme.colorScheme.surface;
-    final Color shadowColor = theme.shadowColor.withAlpha(isDark ? 90 : 45);
+    final isDark = theme.brightness == Brightness.dark;
+    final Color cardColor = isDark ? AppColor.surfaceDark : AppColor.surface;
+    final Color shadowColor =
+        isDark ? Colors.black.withAlpha(90) : Colors.black.withAlpha(45);
 
     return Container(
       width: double.infinity,
@@ -1579,12 +1781,15 @@ class _ChartCard extends StatelessWidget {
 
   Widget _buildMetricToggle(BuildContext context) {
     final theme = Theme.of(context);
-    final bool isDark = theme.brightness == Brightness.dark;
-    final Color borderColor = theme.colorScheme.outlineVariant.withAlpha(
-      isDark ? 80 : 60,
-    );
-    final Color backgroundColor = theme.colorScheme.surfaceContainerHigh
-        .withAlpha(isDark ? 110 : 150);
+    final isDark = theme.brightness == Brightness.dark;
+    final Color borderColor =
+        isDark
+            ? AppColor.textSecondaryDark.withAlpha(80)
+            : AppColor.disabled.withAlpha(60);
+    final Color backgroundColor =
+        isDark
+            ? AppColor.primaryDark.withAlpha(110)
+            : AppColor.surface.withAlpha(240);
 
     return Container(
       decoration: BoxDecoration(
@@ -1609,9 +1814,12 @@ class _ChartCard extends StatelessWidget {
   ) {
     final isSelected = selectedMetric == metric;
     final theme = Theme.of(context);
-    final Color selectedColor = theme.colorScheme.primary;
-    final Color selectedTextColor = theme.colorScheme.onPrimary;
-    final Color unselectedTextColor = theme.colorScheme.onSurfaceVariant;
+    final isDark = theme.brightness == Brightness.dark;
+    final Color selectedColor =
+        isDark ? AppColor.accentGreen : AppColor.primary;
+    final Color selectedTextColor = Colors.white;
+    final Color unselectedTextColor =
+        isDark ? AppColor.textSecondaryDark : AppColor.textSecondary;
 
     return GestureDetector(
       onTap: () => onMetricChanged(metric),
