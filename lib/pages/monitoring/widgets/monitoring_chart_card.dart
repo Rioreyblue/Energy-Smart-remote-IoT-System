@@ -90,7 +90,9 @@ class _ChartColors {
   }
 }
 
-class _MonitoringChartCardState extends State<MonitoringChartCard> {
+class _MonitoringChartCardState extends State<MonitoringChartCard>
+    with AutomaticKeepAliveClientMixin {
+  // Service instance (singleton) for persistent caching
   final TrendsService _trendsService = TrendsService();
   final MonitoringDatasetService _monitoringDatasetService =
       MonitoringDatasetService();
@@ -105,9 +107,9 @@ class _MonitoringChartCardState extends State<MonitoringChartCard> {
   String? _selectedWeekMonthKey;
   String? _selectedWeekKey;
   String? _selectedMonthKey;
-  List<Map<String, dynamic>>? _dailyDataCache;
-  List<Map<String, dynamic>>? _weeklyDataCache;
-  List<Map<String, dynamic>>? _monthlyDataCache;
+
+  @override
+  bool get wantKeepAlive => true; // Preserve widget state across navigation
 
   @override
   void initState() {
@@ -135,6 +137,7 @@ class _MonitoringChartCardState extends State<MonitoringChartCard> {
 
   @override
   Widget build(BuildContext context) {
+    super.build(context); // Required for AutomaticKeepAliveClientMixin
     return _buildChartSection(context, widget.period);
   }
 
@@ -440,21 +443,51 @@ class _MonitoringChartCardState extends State<MonitoringChartCard> {
         }
 
         // Filter weeks for selected month (for chart + week dropdown)
+        // Only include weeks that are primarily within the selected month
         final List<Map<String, dynamic>> monthWeeks =
             _selectedWeekMonthKey == null
                 ? data
                 : data.where((item) {
+                  // Check if week's monthKey matches the selected month
+                  final monthKey = item['monthKey'] as String?;
+                  if (monthKey != null && monthKey == _selectedWeekMonthKey) {
+                    return true;
+                  }
+
+                  // Fallback: check startDate
                   final startDateStr = item['startDate'] as String?;
                   if (startDateStr == null) return false;
                   try {
                     final d = DateTime.parse(startDateStr);
                     final key =
                         '${d.year}-${d.month.toString().padLeft(2, '0')}';
-                    return key == _selectedWeekMonthKey;
+
+                    // Only include if week starts in the selected month
+                    // and majority of week is within the month
+                    if (key == _selectedWeekMonthKey) {
+                      final endDateStr = item['endDate'] as String?;
+                      if (endDateStr != null) {
+                        final endDate = DateTime.parse(endDateStr);
+                        final endKey =
+                            '${endDate.year}-${endDate.month.toString().padLeft(2, '0')}';
+                        // Include if end is also in same month, or if start date is after day 21
+                        // (meaning most of the week is in this month)
+                        return endKey == key || d.day > 21;
+                      }
+                      return true;
+                    }
+                    return false;
                   } catch (_) {
                     return false;
                   }
                 }).toList();
+
+        // Sort weeks by start date to ensure proper order
+        monthWeeks.sort((a, b) {
+          final aStart = a['startDate'] as String? ?? '';
+          final bStart = b['startDate'] as String? ?? '';
+          return aStart.compareTo(bStart);
+        });
 
         // Ensure we have at least one week to show
         final effectiveWeeks = monthWeeks.isNotEmpty ? monthWeeks : data;
@@ -557,7 +590,37 @@ class _MonitoringChartCardState extends State<MonitoringChartCard> {
                                   final weekKey =
                                       item['week'] as String? ??
                                       'W${(index + 1).toString().padLeft(2, '0')}';
-                                  final label = 'Week ${index + 1}';
+
+                                  // Build descriptive label with date range
+                                  String label;
+                                  try {
+                                    final weekNum =
+                                        item['weekNumber'] as int? ??
+                                        (index + 1);
+                                    final startDay = item['startDay'] as int?;
+                                    final endDay = item['endDay'] as int?;
+
+                                    if (startDay != null && endDay != null) {
+                                      label =
+                                          'Week $weekNum ($startDay-$endDay)';
+                                    } else {
+                                      // Fallback to parsing dates
+                                      final startStr =
+                                          item['startDate'] as String?;
+                                      final endStr = item['endDate'] as String?;
+                                      if (startStr != null && endStr != null) {
+                                        final start = DateTime.parse(startStr);
+                                        final end = DateTime.parse(endStr);
+                                        label =
+                                            'Week $weekNum (${start.day}-${end.day})';
+                                      } else {
+                                        label = 'Week $weekNum';
+                                      }
+                                    }
+                                  } catch (_) {
+                                    label = 'Week ${index + 1}';
+                                  }
+
                                   return DropdownMenuItem<String>(
                                     value: weekKey,
                                     child: Text(
@@ -627,7 +690,34 @@ class _MonitoringChartCardState extends State<MonitoringChartCard> {
                               final weekKey =
                                   item['week'] as String? ??
                                   'W${(index + 1).toString().padLeft(2, '0')}';
-                              final label = 'Week ${index + 1}';
+
+                              // Build descriptive label with date range
+                              String label;
+                              try {
+                                final weekNum =
+                                    item['weekNumber'] as int? ?? (index + 1);
+                                final startDay = item['startDay'] as int?;
+                                final endDay = item['endDay'] as int?;
+
+                                if (startDay != null && endDay != null) {
+                                  label = 'Week $weekNum ($startDay-$endDay)';
+                                } else {
+                                  // Fallback to parsing dates
+                                  final startStr = item['startDate'] as String?;
+                                  final endStr = item['endDate'] as String?;
+                                  if (startStr != null && endStr != null) {
+                                    final start = DateTime.parse(startStr);
+                                    final end = DateTime.parse(endStr);
+                                    label =
+                                        'Week $weekNum (${start.day}-${end.day})';
+                                  } else {
+                                    label = 'Week $weekNum';
+                                  }
+                                }
+                              } catch (_) {
+                                label = 'Week ${index + 1}';
+                              }
+
                               return DropdownMenuItem<String>(
                                 value: weekKey,
                                 child: Text(
@@ -651,11 +741,42 @@ class _MonitoringChartCardState extends State<MonitoringChartCard> {
               },
             ),
             const SizedBox(height: 8),
-            Text(
-              'Selected week total: ${selectedWeekKwh.toStringAsFixed(2)} kWh • ₱${selectedWeekCost.toStringAsFixed(2)}',
-              style: ResponsiveText.body(
-                context,
-              ).copyWith(fontWeight: FontWeight.w600),
+            Builder(
+              builder: (context) {
+                // Build descriptive week label
+                String weekLabel = 'Selected week';
+                try {
+                  final startStr = selectedWeek?['startDate'] as String?;
+                  final endStr = selectedWeek?['endDate'] as String?;
+                  if (startStr != null &&
+                      endStr != null &&
+                      selectedWeek != null) {
+                    final start = DateTime.parse(startStr);
+                    final end = DateTime.parse(endStr);
+                    final startDay =
+                        selectedWeek['startDay'] as int? ?? start.day;
+                    final endDay = selectedWeek['endDay'] as int? ?? end.day;
+                    final weekNum = selectedWeek['weekNumber'] ?? '?';
+                    weekLabel = 'Week $weekNum (Days $startDay-$endDay)';
+                  }
+                } catch (_) {
+                  // Keep default label
+                }
+
+                return Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(weekLabel, style: ResponsiveText.caption(context)),
+                    SizedBox(height: Insets.xm),
+                    Text(
+                      'Total: ${selectedWeekKwh.toStringAsFixed(2)} kWh • ₱${selectedWeekCost.toStringAsFixed(2)}',
+                      style: ResponsiveText.body(
+                        context,
+                      ).copyWith(fontWeight: FontWeight.w600),
+                    ),
+                  ],
+                );
+              },
             ),
             const SizedBox(height: 8),
             SizedBox(
@@ -681,12 +802,44 @@ class _MonitoringChartCardState extends State<MonitoringChartCard> {
                         getTitlesWidget: (value, _) {
                           final idx = value.toInt();
                           if (idx >= 0 && idx < effectiveWeeks.length) {
-                            final label = 'Week ${idx + 1}';
+                            final item = effectiveWeeks[idx];
+                            String label;
+
+                            try {
+                              final weekNum =
+                                  item['weekNumber'] as int? ?? (idx + 1);
+                              final startDay = item['startDay'] as int?;
+                              final endDay = item['endDay'] as int?;
+
+                              if (startDay != null && endDay != null) {
+                                label = 'W$weekNum\n$startDay-$endDay';
+                              } else {
+                                // Fallback to parsing dates
+                                final startStr = item['startDate'] as String?;
+                                if (startStr != null) {
+                                  final start = DateTime.parse(startStr);
+                                  final endDateStr = item['endDate'] as String?;
+                                  if (endDateStr != null) {
+                                    final end = DateTime.parse(endDateStr);
+                                    label =
+                                        'W$weekNum\n${start.day}-${end.day}';
+                                  } else {
+                                    label = 'W$weekNum';
+                                  }
+                                } else {
+                                  label = 'W${idx + 1}';
+                                }
+                              }
+                            } catch (_) {
+                              label = 'W${idx + 1}';
+                            }
+
                             return Padding(
                               padding: const EdgeInsets.only(top: 8),
                               child: Text(
                                 label,
                                 style: ResponsiveText.caption(context),
+                                textAlign: TextAlign.center,
                               ),
                             );
                           }
@@ -1019,13 +1172,12 @@ class _MonitoringChartCardState extends State<MonitoringChartCard> {
   }
 
   Future<List<Map<String, dynamic>>> _getDailyData() async {
-    if (_dailyDataCache != null) return _dailyDataCache!;
     try {
       AppLogger.i('[MonitoringChartCard] Fetching daily trends for year...');
       final startDate = DateTime(_currentYear, 1, 1);
       final endDate = DateTime(_currentYear, 12, 31);
 
-      // Try TrendsService first
+      // TrendsService now handles caching internally
       final trendsData = await _trendsService.getDailyTrends(
         startDate,
         endDate,
@@ -1035,8 +1187,7 @@ class _MonitoringChartCardState extends State<MonitoringChartCard> {
       );
 
       if (trendsData.isNotEmpty) {
-        _dailyDataCache = trendsData;
-        return _dailyDataCache!;
+        return trendsData;
       }
 
       // Fallback: try current day usage
@@ -1047,7 +1198,7 @@ class _MonitoringChartCardState extends State<MonitoringChartCard> {
       if (todayUsage['totalKwh'] != null &&
           (todayUsage['totalKwh'] as double) > 0) {
         final todayKey = DateFormat('yyyy-MM-dd').format(DateTime.now());
-        _dailyDataCache = [
+        return [
           {
             'date': todayKey,
             'totalKwh': todayUsage['totalKwh'] ?? 0.0,
@@ -1056,19 +1207,16 @@ class _MonitoringChartCardState extends State<MonitoringChartCard> {
             'timestamp': DateTime.now(),
           },
         ];
-        return _dailyDataCache!;
       }
 
-      _dailyDataCache = [];
-      return _dailyDataCache!;
+      return [];
     } catch (e, stackTrace) {
       AppLogger.e(
         '[MonitoringChartCard] Error fetching daily data: $e',
         e,
         stackTrace,
       );
-      _dailyDataCache = [];
-      return _dailyDataCache!;
+      return [];
     }
   }
 
@@ -1094,7 +1242,11 @@ class _MonitoringChartCardState extends State<MonitoringChartCard> {
   }
 
   Future<List<Map<String, dynamic>>> _getWeeklyData() async {
-    if (_weeklyDataCache != null) return _weeklyDataCache!;
+    // Always build week buckets from daily data to ensure proper month-based weeks (4-5 weeks max per month)
+    // This prevents issues with year-based week calculations that can span multiple months
+
+    // Fallback: Build weekly buckets from daily data
+    // Always use calendar-based weeks per month (4-5 weeks max per month)
     try {
       AppLogger.i(
         '[MonitoringChartCard] Building weekly buckets from daily data...',
@@ -1105,21 +1257,35 @@ class _MonitoringChartCardState extends State<MonitoringChartCard> {
       for (int month = 1; month <= 12; month++) {
         final monthKey = '${_currentYear}-${month.toString().padLeft(2, '0')}';
         final daysInMonth = DateUtils.getDaysInMonth(_currentYear, month);
-        final totalWeeks = ((daysInMonth - 1) / 7).floor() + 1;
-        for (int week = 0; week < totalWeeks; week++) {
-          final startDay = week * 7 + 1;
-          final endDay = math.min(startDay + 6, daysInMonth);
+
+        // Calculate weeks properly: each week is 7 days within the month
+        // Maximum weeks in a month is always 5 (even 31-day months can't have 6 full weeks)
+        int weekNum = 1;
+        int currentDay = 1;
+
+        while (currentDay <= daysInMonth) {
+          final startDay = currentDay;
+          final endDay = math.min(currentDay + 6, daysInMonth);
           final startDate = DateTime(_currentYear, month, startDay);
           final endDate = DateTime(_currentYear, month, endDay);
+
           buckets.add({
             'monthKey': monthKey,
-            'week': '$monthKey-W${week + 1}',
-            'weekNumber': week + 1,
+            'week': '$monthKey-W${weekNum.toString().padLeft(2, '0')}',
+            'weekNumber': weekNum,
             'startDate': DateFormat('yyyy-MM-dd').format(startDate),
             'endDate': DateFormat('yyyy-MM-dd').format(endDate),
+            'startDay': startDay,
+            'endDay': endDay,
             'totalKwh': 0.0,
             'totalCost': 0.0,
           });
+
+          currentDay += 7;
+          weekNum++;
+
+          // Safety check: no month should have more than 5 weeks
+          if (weekNum > 5) break;
         }
       }
 
@@ -1128,17 +1294,23 @@ class _MonitoringChartCardState extends State<MonitoringChartCard> {
         for (final bucket in buckets) bucket['week'] as String: bucket,
       };
 
+      // Aggregate daily data into weekly buckets
       for (final entry in dailyData) {
         final dateStr = entry['date'] as String?;
         if (dateStr == null) continue;
         try {
           final date = DateTime.parse(dateStr);
           if (date.year != _currentYear) continue;
+
           final monthKey =
               '${date.year}-${date.month.toString().padLeft(2, '0')}';
-          final weekNumber = ((date.day - 1) / 7).floor() + 1;
-          final bucketKey = '$monthKey-W$weekNumber';
-          final bucket = bucketMap[bucketKey];
+
+          // Calculate which week this day belongs to within the month
+          // Week 1: days 1-7, Week 2: days 8-14, etc.
+          final weekNumber = ((date.day - 1) ~/ 7) + 1;
+          final weekKey = '$monthKey-W${weekNumber.toString().padLeft(2, '0')}';
+
+          final bucket = bucketMap[weekKey];
           if (bucket != null) {
             bucket['totalKwh'] =
                 (bucket['totalKwh'] as double) +
@@ -1152,21 +1324,40 @@ class _MonitoringChartCardState extends State<MonitoringChartCard> {
         }
       }
 
-      _weeklyDataCache = buckets;
-      return _weeklyDataCache!;
+      return buckets;
     } catch (e, stackTrace) {
       AppLogger.e(
         '[MonitoringChartCard] Error building weekly data: $e',
         e,
         stackTrace,
       );
-      _weeklyDataCache = [];
-      return _weeklyDataCache!;
+      return [];
     }
   }
 
   Future<List<Map<String, dynamic>>> _getMonthlyData() async {
-    if (_monthlyDataCache != null) return _monthlyDataCache!;
+    // Try TrendsService monthly trends first (uses service cache)
+    final startDate = DateTime(_currentYear, 1, 1);
+    final endDate = DateTime(_currentYear, 12, 31);
+    try {
+      final monthlyTrends = await _trendsService.getMonthlyTrends(
+        startDate,
+        endDate,
+      );
+      if (monthlyTrends.isNotEmpty) {
+        AppLogger.i(
+          '[MonitoringChartCard] Using monthly trends from TrendsService: ${monthlyTrends.length} records',
+        );
+        // Ensure all 12 months are represented
+        return _ensureFullYearMonths(monthlyTrends);
+      }
+    } catch (e) {
+      AppLogger.w(
+        '[MonitoringChartCard] Error fetching monthly trends from service: $e',
+      );
+    }
+
+    // Fallback: Try other sources
     try {
       List<Map<String, dynamic>> source = [];
       bool hasSource = false;
@@ -1243,27 +1434,52 @@ class _MonitoringChartCardState extends State<MonitoringChartCard> {
         });
       }
 
-      _monthlyDataCache = months;
-      return _monthlyDataCache!;
+      return months;
     } catch (e, stackTrace) {
       AppLogger.e(
         '[MonitoringChartCard] Error fetching monthly data: $e',
         e,
         stackTrace,
       );
-      _monthlyDataCache =
-          _yearMonths
-              .map(
-                (month) => {
-                  'month':
-                      '${month.year}-${month.month.toString().padLeft(2, '0')}',
-                  'totalKwh': 0.0,
-                  'totalCost': 0.0,
-                },
-              )
-              .toList();
-      return _monthlyDataCache!;
+      return _yearMonths
+          .map(
+            (month) => {
+              'month':
+                  '${month.year}-${month.month.toString().padLeft(2, '0')}',
+              'totalKwh': 0.0,
+              'totalCost': 0.0,
+            },
+          )
+          .toList();
     }
+  }
+
+  /// Ensure all 12 months are represented in monthly data
+  List<Map<String, dynamic>> _ensureFullYearMonths(
+    List<Map<String, dynamic>> monthlyTrends,
+  ) {
+    final Map<String, Map<String, dynamic>> sourceMap = {};
+    for (final entry in monthlyTrends) {
+      final monthKey = entry['month'] as String?;
+      if (monthKey == null) continue;
+      sourceMap[monthKey] = entry;
+    }
+
+    final List<Map<String, dynamic>> months = [];
+    for (int month = 1; month <= 12; month++) {
+      final monthKey = '${_currentYear}-${month.toString().padLeft(2, '0')}';
+      final existing = sourceMap[monthKey];
+      months.add({
+        'month': monthKey,
+        'totalKwh': (existing?['totalKwh'] ?? 0.0).toDouble(),
+        'totalCost': (existing?['totalCost'] ?? 0.0).toDouble(),
+        'startDate': existing?['startDate'],
+        'endDate': existing?['endDate'],
+        'totalUsageTime': existing?['totalUsageTime'] ?? 0,
+        'timestamp': existing?['timestamp'],
+      });
+    }
+    return months;
   }
 
   List<Map<String, dynamic>> _aggregateDailyToMonthly(
@@ -1534,8 +1750,6 @@ class _MonitoringChartCardState extends State<MonitoringChartCard> {
                       _selectedWeekMonthKey =
                           '${month.year}-${month.month.toString().padLeft(2, '0')}';
                       _selectedMonthKey = _selectedWeekMonthKey;
-                      // Clear cache to force refresh when month changes
-                      _dailyDataCache = null;
                     });
                   },
                   child: AnimatedContainer(

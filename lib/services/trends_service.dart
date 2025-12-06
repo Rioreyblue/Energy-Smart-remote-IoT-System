@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:math' as math;
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_database/firebase_database.dart';
@@ -9,13 +10,38 @@ import '../models/predictive_data_model.dart';
 
 /// Service for managing energy trends and aggregations
 class TrendsService {
+  // Singleton pattern for persistent caching
+  TrendsService._internal();
+  static final TrendsService _instance = TrendsService._internal();
+
+  /// Singleton instance - use this to ensure data persistence across navigation
+  factory TrendsService() => _instance;
+
+  /// Explicit singleton accessor
+  static TrendsService get instance => _instance;
+
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
   final FirebaseAuth _auth = FirebaseAuth.instance;
   final FirebaseDatabase _database = FirebaseDatabase.instance;
   final PredictiveDatasetService _predictiveDatasetService =
       PredictiveDatasetService();
 
+  // Persistent caches that survive widget rebuilds
+  List<Map<String, dynamic>>? _dailyDataCache;
+  List<Map<String, dynamic>>? _weeklyDataCache;
+  List<Map<String, dynamic>>? _monthlyDataCache;
+  int? _cachedYear;
+
   String get _userId => _auth.currentUser?.uid ?? '';
+
+  /// Clear all caches (useful when user changes or year changes)
+  void clearCache() {
+    _dailyDataCache = null;
+    _weeklyDataCache = null;
+    _monthlyDataCache = null;
+    _cachedYear = null;
+    AppLogger.i('[TrendsService] Cache cleared');
+  }
 
   /// Run daily aggregation from Realtime DB to Firestore
   Future<void> runDailyAggregation(DateTime date) async {
@@ -172,16 +198,46 @@ class TrendsService {
   }
 
   /// Get daily trends for a date range (CSV data first, then Firestore fallback)
+  /// Uses persistent cache to maintain data across navigation
   Future<List<Map<String, dynamic>>> getDailyTrends(
     DateTime startDate,
     DateTime endDate,
   ) async {
+    final currentYear = startDate.year;
+
+    // Check if we have cached data for this year
+    if (_dailyDataCache != null && _cachedYear == currentYear) {
+      AppLogger.i(
+        '[TrendsService] Using cached daily trends: ${_dailyDataCache!.length} records',
+      );
+      // Filter cached data to requested range
+      return _dailyDataCache!.where((item) {
+        final dateStr = item['date'] as String?;
+        if (dateStr == null) return false;
+        try {
+          final date = DateTime.parse(dateStr);
+          return date.isAfter(startDate.subtract(const Duration(days: 1))) &&
+              date.isBefore(endDate.add(const Duration(days: 1)));
+        } catch (_) {
+          return false;
+        }
+      }).toList();
+    }
+
     // Try CSV data first
     final csvData = _getDailyTrendsFromCsv(startDate, endDate);
     if (csvData.isNotEmpty) {
       AppLogger.i(
         '[TrendsService] Using CSV data for daily trends: ${csvData.length} records',
       );
+      // Cache the full year's data if requested range is the full year
+      if (startDate.month == 1 &&
+          startDate.day == 1 &&
+          endDate.month == 12 &&
+          endDate.day == 31) {
+        _dailyDataCache = csvData;
+        _cachedYear = currentYear;
+      }
       return csvData;
     }
 
@@ -199,17 +255,29 @@ class TrendsService {
               .orderBy('date')
               .get();
 
-      return query.docs.map((doc) {
-        final data = doc.data();
-        return {
-          'id': doc.id,
-          'date': data['date'],
-          'totalKwh': (data['totalKwh'] ?? 0.0).toDouble(),
-          'totalCost': (data['totalCost'] ?? 0.0).toDouble(),
-          'totalUsageTime': data['totalUsageTime'] ?? 0,
-          'timestamp': data['timestamp'],
-        };
-      }).toList();
+      final firestoreData =
+          query.docs.map((doc) {
+            final data = doc.data();
+            return {
+              'id': doc.id,
+              'date': data['date'],
+              'totalKwh': (data['totalKwh'] ?? 0.0).toDouble(),
+              'totalCost': (data['totalCost'] ?? 0.0).toDouble(),
+              'totalUsageTime': data['totalUsageTime'] ?? 0,
+              'timestamp': data['timestamp'],
+            };
+          }).toList();
+
+      // Cache the full year's data if requested range is the full year
+      if (startDate.month == 1 &&
+          startDate.day == 1 &&
+          endDate.month == 12 &&
+          endDate.day == 31) {
+        _dailyDataCache = firestoreData;
+        _cachedYear = currentYear;
+      }
+
+      return firestoreData;
     } catch (e) {
       AppLogger.i('[TrendsService] Error getting daily trends: $e');
       return [];
@@ -217,16 +285,48 @@ class TrendsService {
   }
 
   /// Get weekly trends for a date range (CSV data first, then Firestore fallback)
+  /// Uses persistent cache to maintain data across navigation
   Future<List<Map<String, dynamic>>> getWeeklyTrends(
     DateTime startDate,
     DateTime endDate,
   ) async {
+    final currentYear = startDate.year;
+
+    // Check if we have cached data for this year
+    if (_weeklyDataCache != null && _cachedYear == currentYear) {
+      AppLogger.i(
+        '[TrendsService] Using cached weekly trends: ${_weeklyDataCache!.length} records',
+      );
+      // Filter cached data to requested range
+      return _weeklyDataCache!.where((item) {
+        final startDateStr = item['startDate'] as String?;
+        if (startDateStr == null) return false;
+        try {
+          final itemStart = DateTime.parse(startDateStr);
+          return itemStart.isAfter(
+                startDate.subtract(const Duration(days: 1)),
+              ) &&
+              itemStart.isBefore(endDate.add(const Duration(days: 1)));
+        } catch (_) {
+          return false;
+        }
+      }).toList();
+    }
+
     // Try CSV data first
     final csvData = _getWeeklyTrendsFromCsv(startDate, endDate);
     if (csvData.isNotEmpty) {
       AppLogger.i(
         '[TrendsService] Using CSV data for weekly trends: ${csvData.length} records',
       );
+      // Cache the full year's data if requested range covers the year
+      final yearStart = DateTime(currentYear, 1, 1);
+      final yearEnd = DateTime(currentYear, 12, 31);
+      if (startDate.isBefore(yearStart.add(const Duration(days: 7))) &&
+          endDate.isAfter(yearEnd.subtract(const Duration(days: 7)))) {
+        _weeklyDataCache = csvData;
+        _cachedYear = currentYear;
+      }
       return csvData;
     }
 
@@ -247,19 +347,31 @@ class TrendsService {
               .orderBy('startDate')
               .get();
 
-      return query.docs.map((doc) {
-        final data = doc.data();
-        return {
-          'id': doc.id,
-          'week': data['week'],
-          'startDate': data['startDate'],
-          'endDate': data['endDate'],
-          'totalKwh': (data['totalKwh'] ?? 0.0).toDouble(),
-          'totalCost': (data['totalCost'] ?? 0.0).toDouble(),
-          'totalUsageTime': data['totalUsageTime'] ?? 0,
-          'timestamp': data['timestamp'],
-        };
-      }).toList();
+      final firestoreData =
+          query.docs.map((doc) {
+            final data = doc.data();
+            return {
+              'id': doc.id,
+              'week': data['week'],
+              'startDate': data['startDate'],
+              'endDate': data['endDate'],
+              'totalKwh': (data['totalKwh'] ?? 0.0).toDouble(),
+              'totalCost': (data['totalCost'] ?? 0.0).toDouble(),
+              'totalUsageTime': data['totalUsageTime'] ?? 0,
+              'timestamp': data['timestamp'],
+            };
+          }).toList();
+
+      // Cache the full year's data if requested range covers the year
+      final yearStart = DateTime(currentYear, 1, 1);
+      final yearEnd = DateTime(currentYear, 12, 31);
+      if (startDate.isBefore(yearStart.add(const Duration(days: 7))) &&
+          endDate.isAfter(yearEnd.subtract(const Duration(days: 7)))) {
+        _weeklyDataCache = firestoreData;
+        _cachedYear = currentYear;
+      }
+
+      return firestoreData;
     } catch (e) {
       AppLogger.i('[TrendsService] Error getting weekly trends: $e');
       return [];
@@ -267,16 +379,54 @@ class TrendsService {
   }
 
   /// Get monthly trends for a date range (CSV data first, then Firestore fallback)
+  /// Uses persistent cache to maintain data across navigation
   Future<List<Map<String, dynamic>>> getMonthlyTrends(
     DateTime startDate,
     DateTime endDate,
   ) async {
+    final currentYear = startDate.year;
+
+    // Check if we have cached data for this year
+    if (_monthlyDataCache != null && _cachedYear == currentYear) {
+      AppLogger.i(
+        '[TrendsService] Using cached monthly trends: ${_monthlyDataCache!.length} records',
+      );
+      // Filter cached data to requested range
+      return _monthlyDataCache!.where((item) {
+        final monthStr = item['month'] as String?;
+        if (monthStr == null) return false;
+        try {
+          final parts = monthStr.split('-');
+          if (parts.length == 2) {
+            final year = int.parse(parts[0]);
+            final month = int.parse(parts[1]);
+            final monthStart = DateTime(year, month, 1);
+            return monthStart.isAfter(
+                  startDate.subtract(const Duration(days: 32)),
+                ) &&
+                monthStart.isBefore(endDate.add(const Duration(days: 32)));
+          }
+        } catch (_) {
+          return false;
+        }
+        return false;
+      }).toList();
+    }
+
     // Try CSV data first
     final csvData = _getMonthlyTrendsFromCsv(startDate, endDate);
     if (csvData.isNotEmpty) {
       AppLogger.i(
         '[TrendsService] Using CSV data for monthly trends: ${csvData.length} records',
       );
+      // Cache the full year's data if requested range covers the year
+      final yearStart = DateTime(currentYear, 1, 1);
+      final yearEnd = DateTime(currentYear, 12, 31);
+      if (startDate.isBefore(yearStart.add(const Duration(days: 31))) &&
+          endDate.isAfter(yearEnd.subtract(const Duration(days: 31)))) {
+        _monthlyDataCache = csvData;
+        _cachedYear = currentYear;
+      }
       return csvData;
     }
 
@@ -297,19 +447,31 @@ class TrendsService {
               .orderBy('startDate')
               .get();
 
-      return query.docs.map((doc) {
-        final data = doc.data();
-        return {
-          'id': doc.id,
-          'month': data['month'],
-          'startDate': data['startDate'],
-          'endDate': data['endDate'],
-          'totalKwh': (data['totalKwh'] ?? 0.0).toDouble(),
-          'totalCost': (data['totalCost'] ?? 0.0).toDouble(),
-          'totalUsageTime': data['totalUsageTime'] ?? 0,
-          'timestamp': data['timestamp'],
-        };
-      }).toList();
+      final firestoreData =
+          query.docs.map((doc) {
+            final data = doc.data();
+            return {
+              'id': doc.id,
+              'month': data['month'],
+              'startDate': data['startDate'],
+              'endDate': data['endDate'],
+              'totalKwh': (data['totalKwh'] ?? 0.0).toDouble(),
+              'totalCost': (data['totalCost'] ?? 0.0).toDouble(),
+              'totalUsageTime': data['totalUsageTime'] ?? 0,
+              'timestamp': data['timestamp'],
+            };
+          }).toList();
+
+      // Cache the full year's data if requested range covers the year
+      final yearStart = DateTime(currentYear, 1, 1);
+      final yearEnd = DateTime(currentYear, 12, 31);
+      if (startDate.isBefore(yearStart.add(const Duration(days: 31))) &&
+          endDate.isAfter(yearEnd.subtract(const Duration(days: 31)))) {
+        _monthlyDataCache = firestoreData;
+        _cachedYear = currentYear;
+      }
+
+      return firestoreData;
     } catch (e) {
       AppLogger.i('[TrendsService] Error getting monthly trends: $e');
       return [];
@@ -614,7 +776,7 @@ class TrendsService {
     return result;
   }
 
-  /// Get daily trends from CSV data (distribute monthly data across days)
+  /// Get daily trends from CSV data (distribute monthly data across days with realistic variation)
   List<Map<String, dynamic>> _getDailyTrendsFromCsv(
     DateTime startDate,
     DateTime endDate,
@@ -624,7 +786,7 @@ class TrendsService {
 
     final dailyData = <String, Map<String, dynamic>>{};
 
-    // Process each month's data and distribute to days
+    // Process each month's data and distribute to days with realistic variation
     for (final record in csvData) {
       final monthDate = _parseMonthString(record.month);
       if (monthDate == null) continue;
@@ -634,23 +796,108 @@ class TrendsService {
       // Get days in month
       final daysInMonth = DateTime(monthDate.year, monthDate.month + 1, 0).day;
 
-      // Calculate daily average kWh and cost
-      final dailyKwh = record.energyKwh / daysInMonth;
-      final dailyCost = record.cost / daysInMonth;
+      // Calculate base daily average kWh and cost
+      final baseDailyKwh = record.energyKwh / daysInMonth;
+      final baseDailyCost = record.cost / daysInMonth;
 
-      // Distribute across days in the month
+      // Distribute across days in the month with realistic variation
       final monthStart = DateTime(monthDate.year, monthDate.month, 1);
       final monthEnd = DateTime(monthDate.year, monthDate.month + 1, 0);
+
+      // Calculate variation factors for each day in the month
+      // Use a map to store factors by date key for proper alignment
+      final Map<String, double> variationFactors = {};
+      double totalVariation = 0.0;
 
       DateTime currentDate = monthStart;
       while (currentDate.isBefore(monthEnd) ||
           currentDate.isAtSameMomentAs(monthEnd)) {
+        // Only process dates within the requested range
         if (currentDate.isBefore(startDate) || currentDate.isAfter(endDate)) {
           currentDate = currentDate.add(const Duration(days: 1));
           continue;
         }
 
         final dateKey = _formatDate(currentDate);
+
+        // Create seeded random based on date for consistency
+        // Same date will always produce same variation
+        final dateSeed =
+            currentDate.year * 10000 +
+            currentDate.month * 100 +
+            currentDate.day;
+        final random = math.Random(dateSeed);
+
+        // Day of week (1 = Monday, 7 = Sunday)
+        final weekday = currentDate.weekday;
+        final isWeekend = weekday == 6 || weekday == 7; // Saturday or Sunday
+
+        // Base variation factors
+        double variationFactor = 1.0;
+
+        // Weekend pattern: weekends typically 20-30% higher usage
+        if (isWeekend) {
+          variationFactor *=
+              (1.0 + random.nextDouble() * 0.3 + 0.2); // 1.2 to 1.5x
+        } else {
+          // Weekdays: slight variation
+          variationFactor *= (0.9 + random.nextDouble() * 0.2); // 0.9 to 1.1x
+        }
+
+        // Day-of-week specific patterns
+        switch (weekday) {
+          case 1: // Monday - often higher after weekend
+            variationFactor *=
+                (1.05 + random.nextDouble() * 0.15); // 1.05 to 1.2x
+            break;
+          case 5: // Friday - slightly higher
+            variationFactor *= (1.0 + random.nextDouble() * 0.1); // 1.0 to 1.1x
+            break;
+          case 6: // Saturday - highest weekend day
+            variationFactor *=
+                (1.15 + random.nextDouble() * 0.25); // 1.15 to 1.4x
+            break;
+          case 7: // Sunday - moderate weekend day
+            variationFactor *= (1.1 + random.nextDouble() * 0.2); // 1.1 to 1.3x
+            break;
+          default: // Tuesday-Thursday - normal
+            variationFactor *=
+                (0.85 + random.nextDouble() * 0.25); // 0.85 to 1.1x
+            break;
+        }
+
+        // Add random daily fluctuation (±25% from current factor)
+        final dailyFluctuation =
+            0.75 + (random.nextDouble() * 0.5); // 0.75 to 1.25
+        variationFactor *= dailyFluctuation;
+
+        // Occasional peak days (10% chance of being 1.5-2x higher)
+        if (random.nextDouble() < 0.1) {
+          variationFactor *= (1.5 + random.nextDouble() * 0.5); // 1.5 to 2.0x
+        }
+
+        // Occasional low days (10% chance of being 0.5-0.7x lower)
+        if (random.nextDouble() < 0.1) {
+          variationFactor *= (0.5 + random.nextDouble() * 0.2); // 0.5 to 0.7x
+        }
+
+        variationFactors[dateKey] = variationFactor;
+        totalVariation += variationFactor;
+        currentDate = currentDate.add(const Duration(days: 1));
+      }
+
+      // Normalize factors to ensure monthly total is maintained
+      if (totalVariation > 0 && variationFactors.isNotEmpty) {
+        final normalizationFactor = variationFactors.length / totalVariation;
+        for (final key in variationFactors.keys) {
+          variationFactors[key] = variationFactors[key]! * normalizationFactor;
+        }
+      }
+
+      // Apply variation factors to distribute data
+      for (final entry in variationFactors.entries) {
+        final dateKey = entry.key;
+        final variationFactor = entry.value;
 
         if (!dailyData.containsKey(dateKey)) {
           dailyData[dateKey] = {
@@ -661,12 +908,13 @@ class TrendsService {
           };
         }
 
+        // Apply variation factor
         dailyData[dateKey]!['totalKwh'] =
-            (dailyData[dateKey]!['totalKwh'] as double) + dailyKwh;
+            (dailyData[dateKey]!['totalKwh'] as double) +
+            (baseDailyKwh * variationFactor);
         dailyData[dateKey]!['totalCost'] =
-            (dailyData[dateKey]!['totalCost'] as double) + dailyCost;
-
-        currentDate = currentDate.add(const Duration(days: 1));
+            (dailyData[dateKey]!['totalCost'] as double) +
+            (baseDailyCost * variationFactor);
       }
     }
 
