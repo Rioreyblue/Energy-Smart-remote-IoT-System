@@ -75,8 +75,8 @@ class _MonitoringPageState extends State<MonitoringPage> {
                   SizedBox(height: Insets.md),
                   MonitoringStatusOverview(),
                   SizedBox(height: Insets.lg),
-                  // AI Predictive Consumption Feature
-                  PredictiveConsumptionCard(),
+                  // AI Predictive Consumption Feature - now period-aware
+                  PredictiveConsumptionCard(period: selectedPeriod),
                   SizedBox(height: Insets.lg),
                   // Prediction Charts
                   PredictionChartsCard(prediction: _currentPrediction),

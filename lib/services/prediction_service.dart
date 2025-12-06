@@ -17,9 +17,11 @@ class PredictionService {
 
   String? get _userId => _auth.currentUser?.uid;
 
-  /// Generate prediction from dataset
+  /// Generate prediction from dataset for a specific period
+  /// period: 'Day', 'Week', or 'Month' (defaults to 'Month' for backward compatibility)
   Future<PredictionResultModel?> generatePrediction({
     required List<PredictiveDataModel> dataset,
+    String period = 'Month', // 'Day', 'Week', or 'Month'
     double minRate = 10.0,
     double maxRate = 14.0,
     bool saveToFirestore = true,
@@ -37,12 +39,13 @@ class PredictionService {
       final currentPowerRate = powerRateService.currentRate;
 
       AppLogger.i(
-        '[PredictionService] Using power rate: $currentPowerRate for prediction',
+        '[PredictionService] Using power rate: $currentPowerRate for $period prediction',
       );
 
-      // Generate prediction using MonitoringPrediction with current power rate
-      final prediction = MonitoringPrediction.predictNextMonth(
+      // Generate prediction using MonitoringPrediction with current power rate and period
+      final prediction = MonitoringPrediction.predictNextPeriod(
         dataset: dataset,
+        period: period,
         minRate: minRate,
         maxRate: maxRate,
         powerRate: currentPowerRate,

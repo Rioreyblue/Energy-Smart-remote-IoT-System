@@ -3,7 +3,7 @@ import '../models/prediction_result_model.dart';
 
 class MonitoringPrediction {
   // Returns a tuple: (predicted, previous) - Legacy method for backward compatibility
-  static Map<String, double> predictNextPeriod(List<double> historical) {
+  static Map<String, double> predictNextPeriodLegacy(List<double> historical) {
     if (historical.isEmpty) return {'predicted': 0, 'previous': 0};
     final previous = historical.last;
     final predicted =
@@ -13,19 +13,24 @@ class MonitoringPrediction {
     return {'predicted': predicted, 'previous': previous};
   }
 
-  /// Predict next month's consumption using weighted moving average with trend analysis
+  /// Predict next period's consumption using weighted moving average with trend analysis
+  /// period: 'Day', 'Week', or 'Month'
   /// Returns PredictionResultModel with predicted kWh, cost, and confidence
-  static PredictionResultModel predictNextMonth({
+  static PredictionResultModel predictNextPeriod({
     required List<PredictiveDataModel> dataset,
+    required String period, // 'Day', 'Week', or 'Month'
     double minRate = 10.0,
     double maxRate = 14.0,
     double?
     powerRate, // Optional: if provided, use this rate instead of calculating from dataset
   }) {
+    // For Day and Week, we need to scale monthly data appropriately
+    final scaleFactor = _getPeriodScaleFactor(period);
+
     if (dataset.isEmpty) {
       return PredictionResultModel(
         id: DateTime.now().millisecondsSinceEpoch.toString(),
-        month: _getNextMonth(),
+        month: _getNextPeriodLabel(period),
         predictedKwh: 0,
         predictedCost: 0,
         confidence: 0,
@@ -45,11 +50,13 @@ class MonitoringPrediction {
 
     double totalPredictedKwh = 0;
 
-    // Predict for each appliance
+    // Predict for each appliance (from monthly data)
     for (final entry in applianceGroups.entries) {
       final appliance = entry.key;
       final values = entry.value.map((d) => d.energyKwh).toList();
-      final predicted = _weightedMovingAverageWithTrend(values);
+      final predictedMonthly = _weightedMovingAverageWithTrend(values);
+      // Scale down for Day/Week
+      final predicted = predictedMonthly * scaleFactor;
       applianceBreakdown[appliance] = predicted;
       totalPredictedKwh += predicted;
     }
@@ -76,15 +83,16 @@ class MonitoringPrediction {
     // Calculate confidence based on data variance and amount
     final confidence = _calculateConfidence(dataset);
 
-    // Classify consumption level
+    // Classify consumption level (using scaled prediction)
     final consumptionLevel = classifyConsumptionLevel(
       dataset,
-      totalPredictedKwh,
+      totalPredictedKwh /
+          scaleFactor, // Use monthly equivalent for classification
     );
 
     return PredictionResultModel(
       id: DateTime.now().millisecondsSinceEpoch.toString(),
-      month: _getNextMonth(),
+      month: _getNextPeriodLabel(period),
       predictedKwh: totalPredictedKwh,
       predictedCost: predictedCost,
       confidence: confidence,
@@ -93,6 +101,24 @@ class MonitoringPrediction {
       applianceCostBreakdown: applianceCostBreakdown,
       timestamp: DateTime.now(),
       createdAt: DateTime.now(),
+    );
+  }
+
+  /// Predict next month's consumption using weighted moving average with trend analysis
+  /// Returns PredictionResultModel with predicted kWh, cost, and confidence
+  static PredictionResultModel predictNextMonth({
+    required List<PredictiveDataModel> dataset,
+    double minRate = 10.0,
+    double maxRate = 14.0,
+    double?
+    powerRate, // Optional: if provided, use this rate instead of calculating from dataset
+  }) {
+    return predictNextPeriod(
+      dataset: dataset,
+      period: 'Month',
+      minRate: minRate,
+      maxRate: maxRate,
+      powerRate: powerRate,
     );
   }
 
@@ -220,6 +246,54 @@ class MonitoringPrediction {
     final rates = dataset.where((d) => d.rate > 0).map((d) => d.rate).toList();
     if (rates.isEmpty) return 0.0;
     return rates.reduce((a, b) => a + b) / rates.length;
+  }
+
+  /// Get scale factor to convert monthly prediction to day/week
+  static double _getPeriodScaleFactor(String period) {
+    switch (period.toLowerCase()) {
+      case 'day':
+        return 1.0 / 30.0; // Average days per month
+      case 'week':
+        return 1.0 / 4.33; // Average weeks per month
+      case 'month':
+      default:
+        return 1.0;
+    }
+  }
+
+  /// Get label for next period
+  static String _getNextPeriodLabel(String period) {
+    final now = DateTime.now();
+    switch (period.toLowerCase()) {
+      case 'day':
+        final tomorrow = now.add(const Duration(days: 1));
+        return 'Tomorrow (${_formatDate(tomorrow)})';
+      case 'week':
+        final nextWeek = now.add(const Duration(days: 7));
+        return 'Next Week (${_formatDate(nextWeek)})';
+      case 'month':
+      default:
+        return _getNextMonth();
+    }
+  }
+
+  /// Format date for display
+  static String _formatDate(DateTime date) {
+    const months = [
+      'Jan',
+      'Feb',
+      'Mar',
+      'Apr',
+      'May',
+      'Jun',
+      'Jul',
+      'Aug',
+      'Sep',
+      'Oct',
+      'Nov',
+      'Dec',
+    ];
+    return '${months[date.month - 1]} ${date.day}, ${date.year}';
   }
 
   /// Get next month string (e.g., "January 2025")

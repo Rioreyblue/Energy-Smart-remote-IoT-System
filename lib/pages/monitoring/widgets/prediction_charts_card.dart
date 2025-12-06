@@ -640,11 +640,17 @@ class PredictionChartsCard extends StatelessWidget {
             gridData: FlGridData(
               show: true,
               horizontalInterval: maxY / 5,
-              getDrawingHorizontalLine:
-                  (value) => FlLine(
-                    color: AppColor.disabled.withAlpha((0.2 * 255).toInt()),
-                    strokeWidth: 1,
-                  ),
+              getDrawingHorizontalLine: (value) {
+                final theme = Theme.of(context);
+                final isDark = theme.brightness == Brightness.dark;
+                return FlLine(
+                  color:
+                      isDark
+                          ? AppColor.textSecondaryDark.withAlpha(80)
+                          : AppColor.disabled.withAlpha((0.2 * 255).toInt()),
+                  strokeWidth: 1,
+                );
+              },
             ),
             titlesData: FlTitlesData(
               bottomTitles: AxisTitles(
@@ -702,7 +708,10 @@ class PredictionChartsCard extends StatelessWidget {
             borderData: FlBorderData(
               show: true,
               border: Border.all(
-                color: AppColor.disabled.withAlpha((0.3 * 255).toInt()),
+                color:
+                    Theme.of(context).brightness == Brightness.dark
+                        ? AppColor.textSecondaryDark.withAlpha(110)
+                        : AppColor.disabled.withAlpha((0.3 * 255).toInt()),
                 width: 1,
               ),
             ),
@@ -726,16 +735,27 @@ class PredictionChartsCard extends StatelessWidget {
                     final costText =
                         cost > 0 ? '\n₱${cost.toStringAsFixed(2)}' : '';
 
+                    final theme = Theme.of(context);
+                    final isDark = theme.brightness == Brightness.dark;
                     return LineTooltipItem(
                       '${spot.y.toStringAsFixed(2)} kWh$costText',
                       ResponsiveText.label(context).copyWith(
-                        color: isPrediction ? AppColor.accentRed : Colors.white,
+                        color:
+                            isPrediction
+                                ? AppColor.accentRed
+                                : (isDark
+                                    ? AppColor.textPrimaryDark
+                                    : Colors.white),
                       ),
                     );
                   }).toList();
                 },
                 getTooltipColor: (spots) {
-                  return AppColor.primary.withAlpha((0.9 * 255).toInt());
+                  final theme = Theme.of(context);
+                  final isDark = theme.brightness == Brightness.dark;
+                  return isDark
+                      ? AppColor.primaryDark.withAlpha((0.9 * 255).toInt())
+                      : AppColor.primary.withAlpha((0.9 * 255).toInt());
                 },
               ),
             ),
@@ -806,11 +826,17 @@ class PredictionChartsCard extends StatelessWidget {
             gridData: FlGridData(
               show: true,
               horizontalInterval: maxY / 5,
-              getDrawingHorizontalLine:
-                  (value) => FlLine(
-                    color: AppColor.disabled.withAlpha((0.2 * 255).toInt()),
-                    strokeWidth: 1,
-                  ),
+              getDrawingHorizontalLine: (value) {
+                final theme = Theme.of(context);
+                final isDark = theme.brightness == Brightness.dark;
+                return FlLine(
+                  color:
+                      isDark
+                          ? AppColor.textSecondaryDark.withAlpha(80)
+                          : AppColor.disabled.withAlpha((0.2 * 255).toInt()),
+                  strokeWidth: 1,
+                );
+              },
             ),
             titlesData: FlTitlesData(
               bottomTitles: AxisTitles(
@@ -862,7 +888,10 @@ class PredictionChartsCard extends StatelessWidget {
             borderData: FlBorderData(
               show: true,
               border: Border.all(
-                color: AppColor.disabled.withAlpha((0.3 * 255).toInt()),
+                color:
+                    Theme.of(context).brightness == Brightness.dark
+                        ? AppColor.textSecondaryDark.withAlpha(110)
+                        : AppColor.disabled.withAlpha((0.3 * 255).toInt()),
                 width: 1,
               ),
             ),
@@ -908,16 +937,24 @@ class _ChartCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+    final cardColor = isDark ? AppColor.surfaceDark : AppColor.surface;
+    final shadowColor =
+        isDark
+            ? Colors.black.withAlpha(90)
+            : Colors.black.withAlpha((0.05 * 255).toInt());
+
     return Container(
       width: double.infinity,
       padding: EdgeInsets.symmetric(horizontal: Insets.lg, vertical: Insets.xl),
       margin: EdgeInsets.only(bottom: Insets.md),
       decoration: BoxDecoration(
-        color: Theme.of(context).colorScheme.surface,
+        color: cardColor,
         borderRadius: BorderRadius.circular(16),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withAlpha((0.05 * 255).toInt()),
+            color: shadowColor,
             blurRadius: 8,
             offset: const Offset(0, 2),
           ),
