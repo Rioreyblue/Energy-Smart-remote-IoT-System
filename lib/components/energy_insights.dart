@@ -19,6 +19,7 @@ class EnergyInsights extends StatelessWidget {
   Map<String, String> _calculateInsight(
     List<ApplianceModel> appliances,
     double powerRate,
+    Map<String, String> applianceAliases,
   ) {
     if (appliances.isEmpty) {
       return {
@@ -102,11 +103,12 @@ class EnergyInsights extends StatelessWidget {
     final savingsPercentage = 15;
     final potentialSavings = highestMonthlyCost * (savingsPercentage / 100);
 
-    // Format appliance name
+    // Format appliance name - use alias if available
     final applianceName =
-        highestCostAppliance.name.isNotEmpty
+        applianceAliases[highestCostAppliance.id] ??
+        (highestCostAppliance.name.isNotEmpty
             ? highestCostAppliance.name
-            : _formatApplianceId(highestCostAppliance.id);
+            : _formatApplianceId(highestCostAppliance.id));
 
     // Generate recommendation based on appliance characteristics
     String recommendation;
@@ -161,7 +163,12 @@ class EnergyInsights extends StatelessWidget {
       builder: (context, homeController, child) {
         final appliances = homeController.appliances;
         final powerRate = homeController.currentRate;
-        final insight = _calculateInsight(appliances, powerRate);
+        final applianceAliases = homeController.applianceAliases;
+        final insight = _calculateInsight(
+          appliances,
+          powerRate,
+          applianceAliases,
+        );
 
         return Container(
           padding: EdgeInsets.all(Insets.lg),

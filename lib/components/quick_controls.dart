@@ -1,10 +1,12 @@
 import 'package:flutter/material.dart';
+import 'package:iconsax/iconsax.dart';
 import 'package:exercise_app/constants/constant.dart';
 import 'package:provider/provider.dart';
 import 'switch_card.dart';
 import '../controllers/home_controller.dart';
 import '../models/appliance_model.dart';
 import '../services/goals_service.dart';
+import '../utils/snackbar_utils.dart';
 
 class QuickControls extends StatefulWidget {
   final double Function(BuildContext, double) responsiveFontSize;
@@ -165,43 +167,436 @@ class _QuickControlsState extends State<QuickControls> {
     String currentName,
   ) async {
     final textController = TextEditingController(text: currentName);
+    final brightness = Theme.of(context).brightness;
+    final isDark = brightness == Brightness.dark;
+
+    // Available icon options (7 icons)
+    final iconOptions = [
+      {'name': 'Lamp', 'icon': Iconsax.lamp, 'value': 'Iconsax.lamp'},
+      {
+        'name': 'Lamp Charge',
+        'icon': Iconsax.lamp_charge,
+        'value': 'Iconsax.lamp_charge',
+      },
+      {'name': 'Wind/Fan', 'icon': Iconsax.wind, 'value': 'Iconsax.fan'},
+      {'name': 'Monitor', 'icon': Iconsax.monitor, 'value': 'Iconsax.monitor'},
+      {'name': 'Coffee', 'icon': Iconsax.coffee, 'value': 'Iconsax.coffee'},
+      {
+        'name': 'Electricity',
+        'icon': Iconsax.electricity,
+        'value': 'Iconsax.socket',
+      },
+      {'name': 'Home', 'icon': Iconsax.home, 'value': 'Iconsax.home'},
+    ];
+
+    String selectedIcon = appliance.icon;
 
     await showDialog<void>(
       context: context,
-      builder: (context) {
-        return AlertDialog(
-          title: const Text('Rename device'),
-          content: TextField(
-            controller: textController,
-            decoration: const InputDecoration(
-              labelText: 'Display name',
-              hintText: 'e.g. Living Room Fan',
-            ),
-            autofocus: true,
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(context).pop(),
-              child: const Text('Cancel'),
-            ),
-            TextButton(
-              onPressed: () async {
-                final newName = textController.text.trim();
-                if (newName.isNotEmpty) {
-                  await controller.setApplianceAlias(appliance.id, newName);
-                } else {
-                  await controller.clearApplianceAlias(appliance.id);
-                }
-                if (context.mounted) {
-                  Navigator.of(context).pop();
-                }
-              },
-              child: const Text('Save'),
-            ),
-          ],
+      barrierDismissible: true,
+      useSafeArea: true,
+      builder: (dialogContext) {
+        return StatefulBuilder(
+          builder: (builderContext, setState) {
+            return Dialog(
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(16),
+              ),
+              elevation: 8,
+              backgroundColor: Theme.of(builderContext).colorScheme.surface,
+              child: Container(
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(16),
+                  border: Border.all(
+                    color:
+                        isDark
+                            ? AppColor.accentGreen.withAlpha(77)
+                            : Theme.of(
+                              builderContext,
+                            ).colorScheme.outline.withAlpha(77),
+                    width: 1,
+                  ),
+                  boxShadow: [
+                    BoxShadow(
+                      color:
+                          isDark
+                              ? Colors.black.withAlpha((0.3 * 255).toInt())
+                              : Colors.black.withAlpha((0.05 * 255).toInt()),
+                      blurRadius: 10,
+                      offset: const Offset(0, 2),
+                    ),
+                  ],
+                ),
+                constraints: BoxConstraints(
+                  maxWidth: 400,
+                  maxHeight: MediaQuery.of(builderContext).size.height * 0.85,
+                ),
+                child: SingleChildScrollView(
+                  padding: EdgeInsets.all(Insets.lg),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      // Header with icon and title
+                      Row(
+                        children: [
+                          Container(
+                            padding: EdgeInsets.all(Insets.md),
+                            decoration: BoxDecoration(
+                              color: (isDark
+                                      ? AppColor.accentGreen
+                                      : Theme.of(context).colorScheme.primary)
+                                  .withAlpha(26),
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            child: Icon(
+                              Iconsax.edit_2,
+                              color:
+                                  isDark
+                                      ? AppColor.accentGreen
+                                      : Theme.of(
+                                        builderContext,
+                                      ).colorScheme.primary,
+                              size: 24,
+                            ),
+                          ),
+                          SizedBox(width: Insets.md),
+                          Expanded(
+                            child: Text(
+                              'Rename Device',
+                              style: ResponsiveText.title(
+                                builderContext,
+                              ).copyWith(
+                                color:
+                                    Theme.of(
+                                      builderContext,
+                                    ).colorScheme.onSurface,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                          ),
+                          IconButton(
+                            icon: Icon(
+                              Iconsax.close_circle,
+                              color: Theme.of(
+                                builderContext,
+                              ).colorScheme.onSurface.withAlpha(153),
+                              size: 20,
+                            ),
+                            onPressed: () => Navigator.of(dialogContext).pop(),
+                          ),
+                        ],
+                      ),
+                      SizedBox(height: Insets.lg),
+
+                      // Icon Selection
+                      Text(
+                        'Select Icon',
+                        style: ResponsiveText.label(builderContext).copyWith(
+                          color: Theme.of(builderContext).colorScheme.onSurface,
+                        ),
+                      ),
+                      SizedBox(height: Insets.sm),
+                      Wrap(
+                        spacing: Insets.sm,
+                        runSpacing: Insets.sm,
+                        children:
+                            iconOptions.map((option) {
+                              final isSelected =
+                                  selectedIcon == option['value'];
+                              return GestureDetector(
+                                onTap: () {
+                                  if (builderContext.mounted) {
+                                    setState(() {
+                                      selectedIcon = option['value'] as String;
+                                    });
+                                  }
+                                },
+                                child: Container(
+                                  width: 56,
+                                  height: 56,
+                                  decoration: BoxDecoration(
+                                    color:
+                                        isSelected
+                                            ? (isDark
+                                                    ? AppColor.accentGreen
+                                                    : Theme.of(
+                                                      builderContext,
+                                                    ).colorScheme.primary)
+                                                .withAlpha(26)
+                                            : Theme.of(builderContext)
+                                                .colorScheme
+                                                .surfaceContainerHighest
+                                                .withAlpha(77),
+                                    borderRadius: BorderRadius.circular(12),
+                                    border: Border.all(
+                                      color:
+                                          isSelected
+                                              ? (isDark
+                                                  ? AppColor.accentGreen
+                                                  : Theme.of(
+                                                    builderContext,
+                                                  ).colorScheme.primary)
+                                              : Theme.of(builderContext)
+                                                  .colorScheme
+                                                  .outline
+                                                  .withAlpha(77),
+                                      width: isSelected ? 2 : 1,
+                                    ),
+                                  ),
+                                  child: Icon(
+                                    option['icon'] as IconData,
+                                    color:
+                                        isSelected
+                                            ? (isDark
+                                                ? AppColor.accentGreen
+                                                : Theme.of(
+                                                  builderContext,
+                                                ).colorScheme.primary)
+                                            : Theme.of(builderContext)
+                                                .colorScheme
+                                                .onSurface
+                                                .withAlpha(153),
+                                    size: 24,
+                                  ),
+                                ),
+                              );
+                            }).toList(),
+                      ),
+                      SizedBox(height: Insets.md),
+
+                      // Input field
+                      Text(
+                        'Device Name',
+                        style: ResponsiveText.label(builderContext).copyWith(
+                          color: Theme.of(builderContext).colorScheme.onSurface,
+                        ),
+                      ),
+                      SizedBox(height: Insets.sm),
+                      TextField(
+                        controller: textController,
+                        autofocus: false,
+                        maxLength: 25,
+                        onChanged: (_) {
+                          if (builderContext.mounted) {
+                            setState(() {});
+                          }
+                        },
+                        style: ResponsiveText.body(builderContext).copyWith(
+                          color: Theme.of(builderContext).colorScheme.onSurface,
+                        ),
+                        decoration: InputDecoration(
+                          hintText: 'Enter device name',
+                          hintStyle: TextStyle(
+                            color: Theme.of(
+                              builderContext,
+                            ).colorScheme.onSurface.withAlpha(128),
+                          ),
+                          prefixIcon: Icon(
+                            Iconsax.tag,
+                            color:
+                                isDark
+                                    ? AppColor.accentGreen
+                                    : Theme.of(
+                                      builderContext,
+                                    ).colorScheme.primary,
+                          ),
+                          suffixIcon:
+                              textController.text.isNotEmpty
+                                  ? IconButton(
+                                    icon: Icon(
+                                      Iconsax.close_circle,
+                                      color: Theme.of(
+                                        builderContext,
+                                      ).colorScheme.onSurface.withAlpha(128),
+                                      size: 20,
+                                    ),
+                                    onPressed: () {
+                                      textController.clear();
+                                      if (builderContext.mounted) {
+                                        setState(() {});
+                                      }
+                                    },
+                                  )
+                                  : null,
+                          counterText: '',
+                          filled: true,
+                          fillColor:
+                              Theme.of(builderContext).colorScheme.surface,
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(12),
+                            borderSide: BorderSide(
+                              color: Theme.of(
+                                builderContext,
+                              ).colorScheme.outline.withAlpha(77),
+                            ),
+                          ),
+                          enabledBorder: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(12),
+                            borderSide: BorderSide(
+                              color: Theme.of(
+                                builderContext,
+                              ).colorScheme.outline.withAlpha(77),
+                            ),
+                          ),
+                          focusedBorder: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(12),
+                            borderSide: BorderSide(
+                              color:
+                                  isDark
+                                      ? AppColor.accentGreen
+                                      : Theme.of(
+                                        builderContext,
+                                      ).colorScheme.primary,
+                              width: 2,
+                            ),
+                          ),
+                        ),
+                      ),
+                      SizedBox(height: Insets.lg),
+
+                      // Action buttons
+                      Row(
+                        children: [
+                          Expanded(
+                            child: TextButton(
+                              onPressed:
+                                  () => Navigator.of(dialogContext).pop(),
+                              style: TextButton.styleFrom(
+                                padding: EdgeInsets.symmetric(
+                                  vertical: Insets.md,
+                                ),
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(12),
+                                  side: BorderSide(
+                                    color: Theme.of(
+                                      context,
+                                    ).colorScheme.outline.withAlpha(77),
+                                  ),
+                                ),
+                              ),
+                              child: Text(
+                                'Cancel',
+                                style: ResponsiveText.body(
+                                  builderContext,
+                                ).copyWith(
+                                  color:
+                                      Theme.of(
+                                        builderContext,
+                                      ).colorScheme.onSurface,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                            ),
+                          ),
+                          SizedBox(width: Insets.md),
+                          Expanded(
+                            child: Container(
+                              decoration: BoxDecoration(
+                                gradient: LinearGradient(
+                                  colors: [
+                                    AppColor.accentGreen,
+                                    AppColor.lowConsumption,
+                                  ],
+                                  begin: Alignment.topLeft,
+                                  end: Alignment.bottomRight,
+                                ),
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                              child: ElevatedButton(
+                                onPressed: () async {
+                                  // Close dialog first to prevent state issues
+                                  if (!dialogContext.mounted) return;
+                                  Navigator.of(dialogContext).pop();
+
+                                  // Perform updates after dialog is closed
+                                  try {
+                                    final newName = textController.text.trim();
+
+                                    // Update icon if changed
+                                    if (selectedIcon != appliance.icon) {
+                                      await controller.updateAppliance(
+                                        appliance.id,
+                                        {'icon': selectedIcon},
+                                      );
+                                    }
+
+                                    // Update name alias
+                                    if (newName.isNotEmpty &&
+                                        newName != currentName) {
+                                      await controller.setApplianceAlias(
+                                        appliance.id,
+                                        newName,
+                                      );
+                                    } else if (newName.isEmpty &&
+                                        currentName.isNotEmpty) {
+                                      await controller.clearApplianceAlias(
+                                        appliance.id,
+                                      );
+                                    }
+                                  } catch (e) {
+                                    // Show error in parent context if available
+                                    if (context.mounted) {
+                                      showErrorSnackBar(
+                                        context,
+                                        'Failed to update device. Please try again.',
+                                      );
+                                    }
+                                  }
+                                },
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: Colors.transparent,
+                                  shadowColor: Colors.transparent,
+                                  padding: EdgeInsets.symmetric(
+                                    vertical: Insets.md,
+                                  ),
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(12),
+                                  ),
+                                ),
+                                child: Row(
+                                  mainAxisAlignment: MainAxisAlignment.center,
+                                  children: [
+                                    Icon(
+                                      Iconsax.tick_circle,
+                                      color:
+                                          Theme.of(
+                                            builderContext,
+                                          ).colorScheme.onPrimary,
+                                      size: 20,
+                                    ),
+                                    SizedBox(width: Insets.sm),
+                                    Text(
+                                      'Save',
+                                      style: ResponsiveText.body(
+                                        builderContext,
+                                      ).copyWith(
+                                        color:
+                                            Theme.of(
+                                              builderContext,
+                                            ).colorScheme.onPrimary,
+                                        fontWeight: FontWeight.w600,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            );
+          },
         );
       },
-    );
+    ).then((_) {
+      // Dispose controller when dialog is closed
+      textController.dispose();
+    });
   }
 
   // Optimized timer text formatting - cache calculation

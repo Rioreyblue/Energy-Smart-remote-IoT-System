@@ -3,7 +3,10 @@ import 'package:exercise_app/constants/constant.dart';
 import 'package:intl/intl.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:iconsax/iconsax.dart';
+import 'package:provider/provider.dart';
 import '../services/recent_activity_service.dart';
+import '../controllers/home_controller.dart';
+import '../models/appliance_model.dart';
 
 class ActivitySection extends StatelessWidget {
   final double Function(BuildContext, double) responsiveFontSize;
@@ -79,17 +82,23 @@ class ActivitySection extends StatelessWidget {
               }
 
               final activities = snapshot.data!;
-              return Column(
-                children:
-                    activities.map((activity) {
-                      return Padding(
-                        padding: EdgeInsets.only(bottom: Insets.sm),
-                        child: _ActivityItem(
-                          activity: activity,
-                          responsiveFontSize: responsiveFontSize,
-                        ),
-                      );
-                    }).toList(),
+              return Consumer<HomeController>(
+                builder: (context, homeController, child) {
+                  return Column(
+                    children:
+                        activities.map((activity) {
+                          return Padding(
+                            padding: EdgeInsets.only(bottom: Insets.sm),
+                            child: _ActivityItem(
+                              activity: activity,
+                              responsiveFontSize: responsiveFontSize,
+                              applianceAliases: homeController.applianceAliases,
+                              appliances: homeController.appliances,
+                            ),
+                          );
+                        }).toList(),
+                  );
+                },
               );
             },
           ),
@@ -152,22 +161,62 @@ class ActivitySection extends StatelessWidget {
 class _ActivityItem extends StatelessWidget {
   final Map<String, dynamic> activity;
   final double Function(BuildContext, double) responsiveFontSize;
+  final Map<String, String> applianceAliases;
+  final List<ApplianceModel> appliances;
 
   const _ActivityItem({
     required this.activity,
     required this.responsiveFontSize,
+    required this.applianceAliases,
+    required this.appliances,
   });
 
   @override
   Widget build(BuildContext context) {
     final type = activity['type'] ?? '';
-    final message = activity['message'] ?? '';
+    String message = activity['message'] ?? '';
     final timestamp = activity['timestamp'];
     final Map<String, dynamic> meta =
         (activity['meta'] as Map<String, dynamic>?) ?? const {};
 
+    // Replace appliance name in message with alias if available
+    final applianceId = meta['applianceId'] as String?;
+    ApplianceModel? currentAppliance;
+
+    if (applianceId != null && appliances.isNotEmpty) {
+      // Find current appliance to get latest icon and name
+      try {
+        currentAppliance = appliances.firstWhere(
+          (appliance) => appliance.id == applianceId,
+        );
+      } catch (e) {
+        // Appliance not found, currentAppliance remains null
+        currentAppliance = null;
+      }
+
+      // Use current alias if available, otherwise use current appliance name
+      if (applianceAliases.containsKey(applianceId)) {
+        final alias = applianceAliases[applianceId]!;
+        final originalName = meta['applianceName'] as String?;
+        if (originalName != null && message.contains(originalName)) {
+          message = message.replaceAll(originalName, alias);
+        }
+      } else if (currentAppliance != null) {
+        // Use current appliance name if alias not available
+        final originalName = meta['applianceName'] as String?;
+        final currentName = currentAppliance.name;
+        if (originalName != null &&
+            currentName.isNotEmpty &&
+            message.contains(originalName) &&
+            originalName != currentName) {
+          message = message.replaceAll(originalName, currentName);
+        }
+      }
+    }
+
     // Get icon and color based on activity type
-    final iconData = _getActivityIcon(type, meta);
+    // Use current appliance icon if available, otherwise fall back to stored icon
+    final iconData = _getActivityIcon(type, meta, currentAppliance);
     final iconColor = _getActivityColor(type);
 
     // Format timestamp
@@ -210,13 +259,24 @@ class _ActivityItem extends StatelessWidget {
     );
   }
 
-  IconData _getActivityIcon(String type, Map<String, dynamic> meta) {
+  IconData _getActivityIcon(
+    String type,
+    Map<String, dynamic> meta,
+    ApplianceModel? currentAppliance,
+  ) {
+    // For appliance activities, use current appliance icon if available
+    if ((type == 'appliance_on' || type == 'appliance_off') &&
+        currentAppliance != null) {
+      return currentAppliance.getIconData();
+    }
+
     // If applianceIcon from meta exists, map it to corresponding Iconsax icon
     final iconString = meta['applianceIcon'] as String?;
     if (iconString != null && iconString.isNotEmpty) {
       final mapped = _mapIconStringToIconData(iconString);
       if (mapped != null) return mapped;
     }
+
     // Fallback to type-based icon
     switch (type) {
       case 'appliance_on':
