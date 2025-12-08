@@ -148,11 +148,20 @@ class _SetEnergyTargetPageState extends State<SetEnergyTargetPage> {
         ),
         title: Row(
           children: [
-            Icon(Iconsax.setting_2, color: AppColor.accentGreen, size: 24),
+            Icon(
+              Iconsax.setting_2,
+              color:
+                  Theme.of(context).brightness == Brightness.dark
+                      ? AppColor.accentGreen
+                      : Theme.of(context).colorScheme.primary,
+              size: 24,
+            ),
             const SizedBox(width: Insets.sm),
             Text(
               'Energy Target Settings',
-              style: ResponsiveText.title(context),
+              style: ResponsiveText.title(
+                context,
+              ).copyWith(color: Theme.of(context).colorScheme.onSurface),
             ),
           ],
         ),
@@ -163,21 +172,49 @@ class _SetEnergyTargetPageState extends State<SetEnergyTargetPage> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             // Total Budget Section
-            Text('Total Budget (₱)', style: ResponsiveText.label(context)),
+            Text(
+              'Total Budget (₱)',
+              style: ResponsiveText.label(
+                context,
+              ).copyWith(color: Theme.of(context).colorScheme.onSurface),
+            ),
             SizedBox(height: Insets.sm),
             TextField(
               controller: _totalBudgetController,
               keyboardType: TextInputType.number,
               decoration: InputDecoration(
                 hintText: 'Enter total budget',
-                prefixIcon: Icon(Iconsax.money, color: AppColor.accentGreen),
+                hintStyle: TextStyle(
+                  color: Theme.of(context).colorScheme.onSurface.withAlpha(128),
+                ),
+                prefixIcon: Icon(
+                  Iconsax.money,
+                  color:
+                      Theme.of(context).brightness == Brightness.dark
+                          ? AppColor.accentGreen
+                          : Theme.of(context).colorScheme.primary,
+                ),
                 border: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(12),
-                  borderSide: BorderSide(color: AppColor.disabled),
+                  borderSide: BorderSide(
+                    color: Theme.of(context).colorScheme.outline.withAlpha(77),
+                  ),
                 ),
                 focusedBorder: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(12),
-                  borderSide: BorderSide(color: AppColor.accentGreen, width: 2),
+                  borderSide: BorderSide(
+                    color:
+                        Theme.of(context).brightness == Brightness.dark
+                            ? AppColor.accentGreen
+                            : Theme.of(context).colorScheme.primary,
+                    width: 2,
+                  ),
+                ),
+                enabledBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  borderSide: BorderSide(
+                    color: Theme.of(context).colorScheme.outline.withAlpha(77),
+                  ),
                 ),
               ),
             ),
@@ -187,14 +224,22 @@ class _SetEnergyTargetPageState extends State<SetEnergyTargetPage> {
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                Text('Rate per kWh (₱)', style: ResponsiveText.label(context)),
+                Text(
+                  'Rate per kWh (₱)',
+                  style: ResponsiveText.label(
+                    context,
+                  ).copyWith(color: Theme.of(context).colorScheme.onSurface),
+                ),
                 if (_isLoadingPowerRate)
                   SizedBox(
                     width: 16,
                     height: 16,
                     child: CircularProgressIndicator(
                       strokeWidth: 2,
-                      color: Theme.of(context).colorScheme.primary,
+                      color:
+                          Theme.of(context).brightness == Brightness.dark
+                              ? AppColor.accentGreen
+                              : Theme.of(context).colorScheme.primary,
                     ),
                   )
                 else
@@ -203,7 +248,10 @@ class _SetEnergyTargetPageState extends State<SetEnergyTargetPage> {
                     child: Icon(
                       Iconsax.refresh,
                       size: 16,
-                      color: Theme.of(context).colorScheme.primary,
+                      color:
+                          Theme.of(context).brightness == Brightness.dark
+                              ? AppColor.accentGreen
+                              : Theme.of(context).colorScheme.primary,
                     ),
                   ),
               ],
@@ -215,30 +263,48 @@ class _SetEnergyTargetPageState extends State<SetEnergyTargetPage> {
               keyboardType: TextInputType.number,
               decoration: InputDecoration(
                 hintText: 'Rate: ₱${_rateController.text}/kWh',
+                hintStyle: TextStyle(
+                  color: Theme.of(context).colorScheme.onSurface.withAlpha(128),
+                ),
                 prefixIcon: Icon(
                   Iconsax.flash_1,
-                  color: Theme.of(context).colorScheme.primary,
+                  color:
+                      Theme.of(context).brightness == Brightness.dark
+                          ? AppColor.accentGreen
+                          : Theme.of(context).colorScheme.primary,
                 ),
                 suffixIcon: Icon(
                   Iconsax.info_circle,
                   size: 16,
-                  color: AppColor.disabled,
+                  color: Theme.of(context).colorScheme.onSurface.withAlpha(128),
                 ),
                 helperText: 'Fetched from admin settings (read-only)',
-                helperStyle: ResponsiveText.caption(context),
+                helperStyle: ResponsiveText.caption(context).copyWith(
+                  color: Theme.of(context).colorScheme.onSurface.withAlpha(153),
+                ),
                 filled: true,
                 fillColor: Theme.of(context).colorScheme.surface,
                 border: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(12),
-                  borderSide: BorderSide(color: AppColor.disabled),
+                  borderSide: BorderSide(
+                    color: Theme.of(context).colorScheme.outline.withAlpha(77),
+                  ),
                 ),
                 enabledBorder: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(12),
-                  borderSide: BorderSide(color: AppColor.disabled),
+                  borderSide: BorderSide(
+                    color: Theme.of(context).colorScheme.outline.withAlpha(77),
+                  ),
                 ),
                 focusedBorder: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(12),
-                  borderSide: BorderSide(color: AppColor.accentGreen, width: 2),
+                  borderSide: BorderSide(
+                    color:
+                        Theme.of(context).brightness == Brightness.dark
+                            ? AppColor.accentGreen
+                            : Theme.of(context).colorScheme.primary,
+                    width: 2,
+                  ),
                 ),
               ),
             ),
@@ -247,7 +313,9 @@ class _SetEnergyTargetPageState extends State<SetEnergyTargetPage> {
             // Threshold Slider Section
             Text(
               'Alert Threshold: ${_thresholdSlider.toInt()}%',
-              style: ResponsiveText.label(context),
+              style: ResponsiveText.label(
+                context,
+              ).copyWith(color: Theme.of(context).colorScheme.onSurface),
             ),
             SizedBox(height: Insets.sm),
             Slider(
@@ -256,15 +324,35 @@ class _SetEnergyTargetPageState extends State<SetEnergyTargetPage> {
               max: 95,
               divisions: 9,
               label: '${_thresholdSlider.toInt()}%',
-              activeColor: AppColor.accentGreen,
+              activeColor:
+                  Theme.of(context).brightness == Brightness.dark
+                      ? AppColor.accentGreen
+                      : Theme.of(context).colorScheme.primary,
+              inactiveColor: Theme.of(
+                context,
+              ).colorScheme.surfaceContainerHighest.withAlpha(77),
               onChanged: (value) => setState(() => _thresholdSlider = value),
             ),
             SizedBox(height: Insets.sm),
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                Text('50%', style: ResponsiveText.caption(context)),
-                Text('95%', style: ResponsiveText.caption(context)),
+                Text(
+                  '50%',
+                  style: ResponsiveText.caption(context).copyWith(
+                    color: Theme.of(
+                      context,
+                    ).colorScheme.onSurface.withAlpha(153),
+                  ),
+                ),
+                Text(
+                  '95%',
+                  style: ResponsiveText.caption(context).copyWith(
+                    color: Theme.of(
+                      context,
+                    ).colorScheme.onSurface.withAlpha(153),
+                  ),
+                ),
               ],
             ),
             SizedBox(height: Insets.lg),
@@ -275,12 +363,18 @@ class _SetEnergyTargetPageState extends State<SetEnergyTargetPage> {
                 Switch(
                   value: _alertEnabled,
                   onChanged: (value) => setState(() => _alertEnabled = value),
+                  activeColor:
+                      Theme.of(context).brightness == Brightness.dark
+                          ? AppColor.accentGreen
+                          : Theme.of(context).colorScheme.primary,
                 ),
                 SizedBox(width: Insets.sm),
                 Expanded(
                   child: Text(
                     'Enable Budget Alerts',
-                    style: ResponsiveText.body(context),
+                    style: ResponsiveText.body(
+                      context,
+                    ).copyWith(color: Theme.of(context).colorScheme.onSurface),
                   ),
                 ),
               ],
@@ -321,7 +415,7 @@ class _SetEnergyTargetPageState extends State<SetEnergyTargetPage> {
                                 child: CircularProgressIndicator(
                                   strokeWidth: 2,
                                   valueColor: AlwaysStoppedAnimation<Color>(
-                                    Colors.white,
+                                    Theme.of(context).colorScheme.onPrimary,
                                   ),
                                 ),
                               ),
@@ -329,7 +423,8 @@ class _SetEnergyTargetPageState extends State<SetEnergyTargetPage> {
                               Text(
                                 'Saving...',
                                 style: ResponsiveText.body(context).copyWith(
-                                  color: Colors.white,
+                                  color:
+                                      Theme.of(context).colorScheme.onPrimary,
                                   fontWeight: FontWeight.w600,
                                 ),
                               ),
@@ -341,14 +436,15 @@ class _SetEnergyTargetPageState extends State<SetEnergyTargetPage> {
                             children: [
                               Icon(
                                 Iconsax.tick_circle,
-                                color: Colors.white,
+                                color: Theme.of(context).colorScheme.onPrimary,
                                 size: 20,
                               ),
                               SizedBox(width: Insets.sm),
                               Text(
                                 'Save Settings',
                                 style: ResponsiveText.body(context).copyWith(
-                                  color: Colors.white,
+                                  color:
+                                      Theme.of(context).colorScheme.onPrimary,
                                   fontWeight: FontWeight.w600,
                                 ),
                               ),

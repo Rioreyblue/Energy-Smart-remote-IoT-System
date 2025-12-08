@@ -151,9 +151,14 @@ class _DialogContentState extends State<_DialogContent> {
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
       title: Row(
         children: [
-          Icon(Iconsax.setting_2, color: AppColor.accentGreen),
+          Icon(Iconsax.setting_2, color: Theme.of(context).colorScheme.primary),
           SizedBox(width: Insets.sm),
-          Text('Budget Settings', style: ResponsiveText.title(context)),
+          Text(
+            'Budget Settings',
+            style: ResponsiveText.title(
+              context,
+            ).copyWith(color: Theme.of(context).colorScheme.onSurface),
+          ),
         ],
       ),
       content: SingleChildScrollView(
@@ -162,21 +167,40 @@ class _DialogContentState extends State<_DialogContent> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             // Total Budget
-            Text('Total Budget (₱)', style: ResponsiveText.label(context)),
+            Text(
+              'Total Budget (₱)',
+              style: ResponsiveText.label(
+                context,
+              ).copyWith(color: Theme.of(context).colorScheme.onSurface),
+            ),
             SizedBox(height: Insets.sm),
             TextField(
               controller: widget.totalBudgetController,
               keyboardType: TextInputType.number,
               decoration: InputDecoration(
                 hintText: 'Enter total budget',
-                prefixIcon: Icon(Iconsax.money, color: AppColor.accentGreen),
+                prefixIcon: Icon(
+                  Iconsax.money,
+                  color: Theme.of(context).colorScheme.primary,
+                ),
                 border: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(12),
-                  borderSide: BorderSide(color: AppColor.disabled),
+                  borderSide: BorderSide(
+                    color: Theme.of(context).colorScheme.outline.withAlpha(77),
+                  ),
+                ),
+                enabledBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  borderSide: BorderSide(
+                    color: Theme.of(context).colorScheme.outline.withAlpha(77),
+                  ),
                 ),
                 focusedBorder: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(12),
-                  borderSide: BorderSide(color: AppColor.accentGreen, width: 2),
+                  borderSide: BorderSide(
+                    color: Theme.of(context).colorScheme.primary,
+                    width: 2,
+                  ),
                 ),
               ),
             ),
@@ -186,7 +210,12 @@ class _DialogContentState extends State<_DialogContent> {
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                Text('Rate per kWh (₱)', style: ResponsiveText.label(context)),
+                Text(
+                  'Rate per kWh (₱)',
+                  style: ResponsiveText.label(
+                    context,
+                  ).copyWith(color: Theme.of(context).colorScheme.onSurface),
+                ),
                 if (_isLoadingPowerRate)
                   SizedBox(
                     width: 16,
@@ -233,23 +262,32 @@ class _DialogContentState extends State<_DialogContent> {
                 suffixIcon: Icon(
                   Iconsax.info_circle,
                   size: 16,
-                  color: AppColor.disabled,
+                  color: Theme.of(context).colorScheme.onSurface.withAlpha(128),
                 ),
                 helperText: 'Fetched from admin settings (read-only)',
-                helperStyle: ResponsiveText.caption(context),
+                helperStyle: ResponsiveText.caption(context).copyWith(
+                  color: Theme.of(context).colorScheme.onSurface.withAlpha(153),
+                ),
                 filled: true,
                 fillColor: Theme.of(context).colorScheme.surface,
                 border: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(12),
-                  borderSide: BorderSide(color: AppColor.disabled),
+                  borderSide: BorderSide(
+                    color: Theme.of(context).colorScheme.outline.withAlpha(77),
+                  ),
                 ),
                 enabledBorder: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(12),
-                  borderSide: BorderSide(color: AppColor.disabled),
+                  borderSide: BorderSide(
+                    color: Theme.of(context).colorScheme.outline.withAlpha(77),
+                  ),
                 ),
                 focusedBorder: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(12),
-                  borderSide: BorderSide(color: AppColor.accentGreen, width: 2),
+                  borderSide: BorderSide(
+                    color: Theme.of(context).colorScheme.primary,
+                    width: 2,
+                  ),
                 ),
               ),
             ),
@@ -258,7 +296,9 @@ class _DialogContentState extends State<_DialogContent> {
             // Threshold Slider
             Text(
               'Alert Threshold: ${thresholdSlider.toInt()}%',
-              style: ResponsiveText.label(context),
+              style: ResponsiveText.label(
+                context,
+              ).copyWith(color: Theme.of(context).colorScheme.onSurface),
             ),
             SizedBox(height: Insets.sm),
             Slider(
@@ -267,15 +307,29 @@ class _DialogContentState extends State<_DialogContent> {
               max: 95,
               divisions: 9,
               label: '${thresholdSlider.toInt()}%',
-              activeColor: AppColor.accentGreen,
+              activeColor: Theme.of(context).colorScheme.primary,
               onChanged: (value) => setState(() => thresholdSlider = value),
             ),
             SizedBox(height: Insets.sm),
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                Text('50%', style: ResponsiveText.caption(context)),
-                Text('95%', style: ResponsiveText.caption(context)),
+                Text(
+                  '50%',
+                  style: ResponsiveText.caption(context).copyWith(
+                    color: Theme.of(
+                      context,
+                    ).colorScheme.onSurface.withAlpha(153),
+                  ),
+                ),
+                Text(
+                  '95%',
+                  style: ResponsiveText.caption(context).copyWith(
+                    color: Theme.of(
+                      context,
+                    ).colorScheme.onSurface.withAlpha(153),
+                  ),
+                ),
               ],
             ),
             SizedBox(height: Insets.md),
@@ -291,7 +345,9 @@ class _DialogContentState extends State<_DialogContent> {
                 Expanded(
                   child: Text(
                     'Enable Budget Alerts',
-                    style: ResponsiveText.body(context),
+                    style: ResponsiveText.body(
+                      context,
+                    ).copyWith(color: Theme.of(context).colorScheme.onSurface),
                   ),
                 ),
               ],
@@ -302,13 +358,13 @@ class _DialogContentState extends State<_DialogContent> {
                 width: double.infinity,
                 padding: EdgeInsets.all(Insets.sm),
                 decoration: BoxDecoration(
-                  color: AppColor.accentGreen.withAlpha(20),
+                  color: Theme.of(context).colorScheme.primary.withAlpha(20),
                   borderRadius: BorderRadius.circular(12),
                 ),
                 child: Text(
                   'Last alert dismissed: ${DateFormat.yMMMEd().add_jm().format(widget.controller.lastAlertDismissedAt!)}',
                   style: ResponsiveText.caption(context).copyWith(
-                    color: AppColor.primary,
+                    color: Theme.of(context).colorScheme.onSurface,
                     fontWeight: FontWeight.w600,
                   ),
                 ),
@@ -321,13 +377,18 @@ class _DialogContentState extends State<_DialogContent> {
         TextButton(
           onPressed:
               isSaving ? null : () => Navigator.of(widget.dialogContext).pop(),
-          child: Text('Cancel', style: ResponsiveText.body(context)),
+          child: Text(
+            'Cancel',
+            style: ResponsiveText.body(
+              context,
+            ).copyWith(color: Theme.of(context).colorScheme.onSurface),
+          ),
         ),
         ElevatedButton(
           onPressed: isSaving ? null : _handleSave,
           style: ElevatedButton.styleFrom(
             backgroundColor: AppColor.accentGreen,
-            foregroundColor: Colors.white,
+            foregroundColor: Theme.of(context).colorScheme.onPrimary,
           ),
           child:
               isSaving
@@ -340,7 +401,7 @@ class _DialogContentState extends State<_DialogContent> {
                         child: CircularProgressIndicator(
                           strokeWidth: 2,
                           valueColor: AlwaysStoppedAnimation<Color>(
-                            Colors.white,
+                            Theme.of(context).colorScheme.onPrimary,
                           ),
                         ),
                       ),
@@ -348,7 +409,7 @@ class _DialogContentState extends State<_DialogContent> {
                       Text(
                         'Saving...',
                         style: ResponsiveText.body(context).copyWith(
-                          color: Colors.white,
+                          color: Theme.of(context).colorScheme.onPrimary,
                           fontWeight: FontWeight.w600,
                         ),
                       ),
@@ -357,7 +418,7 @@ class _DialogContentState extends State<_DialogContent> {
                   : Text(
                     'Save',
                     style: ResponsiveText.body(context).copyWith(
-                      color: Colors.white,
+                      color: Theme.of(context).colorScheme.onPrimary,
                       fontWeight: FontWeight.w600,
                     ),
                   ),

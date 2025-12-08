@@ -5,6 +5,8 @@ import 'package:flutter/foundation.dart';
 import '../services/firestore_budget_service.dart';
 import '../services/notification_service.dart';
 import '../services/threshold_monitor_service.dart';
+import '../services/sms_chef_service.dart';
+import '../services/auth_service.dart';
 import '../utils/app_logger.dart';
 
 import 'package:firebase_auth/firebase_auth.dart';
@@ -15,6 +17,8 @@ class BudgetController with ChangeNotifier {
   final FirebaseAuth _auth = FirebaseAuth.instance;
   final FirestoreBudgetService _firestoreService = FirestoreBudgetService();
   final NotificationService _notificationService = NotificationService();
+  final SmsChefService _smsChefService = SmsChefService();
+  final AuthService _authService = AuthService();
 
   StreamSubscription<DatabaseEvent>? _rtdbSub;
   Timer? _remainingTimer;
@@ -49,6 +53,10 @@ class BudgetController with ChangeNotifier {
   bool _isInitialized = false;
   bool _notificationSentForToday = false;
   int? _lastThresholdThatTriggered;
+  bool _smsSentForThreshold =
+      false; // Track if SMS sent for threshold achievement
+  bool _smsSentForFullConsumption =
+      false; // Track if SMS sent for 100% consumption
   bool _disposed = false;
 
   /// Get current user ID
@@ -245,6 +253,10 @@ class BudgetController with ChangeNotifier {
           '[BudgetController] Threshold changed from $_lastThresholdThatTriggered% to $thresholdPercentage% - resetting notification flag',
         );
         _notificationSentForToday = false;
+        _smsSentForThreshold =
+            false; // Reset threshold SMS flag when threshold changes
+        _smsSentForFullConsumption =
+            false; // Reset full consumption SMS flag when threshold changes
         // Reset proceed state when threshold changes
         _notificationService.resetProceedState();
       }
@@ -275,6 +287,14 @@ class BudgetController with ChangeNotifier {
           AppLogger.i(
             '[BudgetController] Notification sent (proceed active) for threshold $thresholdPercentage%',
           );
+          // Send SMS alert every time threshold is reached (with cooldown)
+          await _sendSmsAlert(
+            totalConsumedCost: totalConsumedCost,
+            remainingBudget: remainingBudget,
+            totalBudget: totalBudget,
+            thresholdPercentage: thresholdPercentage.toDouble(),
+            usedPercent: usedPercent,
+          );
         } else if (!_notificationSentForToday) {
           // Normal flow - send notification only if not sent today
           AppLogger.i(
@@ -291,9 +311,25 @@ class BudgetController with ChangeNotifier {
           AppLogger.i(
             '[BudgetController] Notification sent for threshold $thresholdPercentage%',
           );
+          // Send SMS alert every time threshold is reached (with cooldown)
+          await _sendSmsAlert(
+            totalConsumedCost: totalConsumedCost,
+            remainingBudget: remainingBudget,
+            totalBudget: totalBudget,
+            thresholdPercentage: thresholdPercentage.toDouble(),
+            usedPercent: usedPercent,
+          );
         } else {
           AppLogger.d(
             '[BudgetController] Notification already sent today - skipping (use Proceed to continue)',
+          );
+          // Still send SMS alert even if notification was already sent (with cooldown)
+          await _sendSmsAlert(
+            totalConsumedCost: totalConsumedCost,
+            remainingBudget: remainingBudget,
+            totalBudget: totalBudget,
+            thresholdPercentage: thresholdPercentage.toDouble(),
+            usedPercent: usedPercent,
           );
         }
       } else {
@@ -421,6 +457,10 @@ class BudgetController with ChangeNotifier {
             '[BudgetController] Threshold changed to $thresholdPercentage% - resetting notification flag',
           );
           _notificationSentForToday = false;
+          _smsSentForThreshold =
+              false; // Reset threshold SMS flag when threshold changes
+          _smsSentForFullConsumption =
+              false; // Reset full consumption SMS flag when threshold changes
           _lastThresholdThatTriggered =
               null; // Reset to allow notification for new threshold
           // Reset proceed state when threshold changes
@@ -485,9 +525,172 @@ class BudgetController with ChangeNotifier {
     }
   }
 
+  /// Send SMS alert when budget threshold is reached
+  Future<void> _sendSmsAlert({
+    required double totalConsumedCost,
+    required double remainingBudget,
+    required double totalBudget,
+    required double thresholdPercentage,
+    required double usedPercent,
+  }) async {
+    try {
+      // Check if budget alerts are enabled - only send SMS if enabled
+      if (!alertEnabled) {
+        AppLogger.d('[BudgetController] Budget alerts disabled - skipping SMS');
+        return;
+      }
+
+      // SMS should only be sent twice:
+      // 1. When threshold percentage is first reached (e.g., 80%)
+      // 2. When budget consumption reaches 100% (fully consumed)
+
+      final isThresholdReached = usedPercent >= thresholdPercentage;
+      final isFullyConsumed = usedPercent >= 100.0;
+
+      // Check if we should send SMS for threshold achievement
+      if (isThresholdReached && !isFullyConsumed) {
+        if (_smsSentForThreshold) {
+          AppLogger.d(
+            '[BudgetController] SMS already sent for threshold $thresholdPercentage% - skipping',
+          );
+          return;
+        }
+        // Mark that SMS was sent for threshold
+        _smsSentForThreshold = true;
+        AppLogger.d(
+          '[BudgetController] Sending SMS alert for threshold $thresholdPercentage% (consumption: ${usedPercent.toStringAsFixed(1)}%)',
+        );
+      }
+      // Check if we should send SMS for full consumption (100%)
+      else if (isFullyConsumed) {
+        if (_smsSentForFullConsumption) {
+          AppLogger.d(
+            '[BudgetController] SMS already sent for full consumption (100%) - skipping',
+          );
+          return;
+        }
+        // Mark that SMS was sent for full consumption
+        _smsSentForFullConsumption = true;
+        AppLogger.d(
+          '[BudgetController] Sending SMS alert for full budget consumption (100%)',
+        );
+      }
+      // If neither condition is met, don't send SMS
+      else {
+        AppLogger.d(
+          '[BudgetController] Consumption ${usedPercent.toStringAsFixed(1)}% - no SMS needed (threshold: $thresholdPercentage%, full: 100%)',
+        );
+        return;
+      }
+
+      // Get user's phone number from multiple sources
+      String? phoneNumber;
+
+      // Try Firebase Auth phone number first
+      final authUser = _auth.currentUser;
+      if (authUser?.phoneNumber != null && authUser!.phoneNumber!.isNotEmpty) {
+        phoneNumber = authUser.phoneNumber;
+        AppLogger.d('[BudgetController] Using phone number from Firebase Auth');
+      }
+
+      // Fallback to user data from AuthService
+      if (phoneNumber == null || phoneNumber.isEmpty) {
+        final userData = await _authService.getCurrentUserData();
+        if (userData != null) {
+          phoneNumber = userData.mobileNumber;
+          AppLogger.d('[BudgetController] Using phone number from user data');
+        }
+      }
+
+      if (phoneNumber == null || phoneNumber.isEmpty) {
+        AppLogger.w(
+          '[BudgetController] Phone number not found in any source - cannot send SMS alert',
+        );
+        return;
+      }
+
+      AppLogger.d(
+        '[BudgetController] Retrieved phone number: ${phoneNumber.length > 4 ? phoneNumber.substring(phoneNumber.length - 4) : "****"}',
+      );
+
+      // Format phone number to international format (+63...) for SMS Chef
+      try {
+        phoneNumber = _formatPhoneNumber(phoneNumber);
+        AppLogger.d(
+          '[BudgetController] Formatted phone number for SMS: ${phoneNumber.length > 4 ? phoneNumber.substring(0, phoneNumber.length - 4) + "****" : "****"}',
+        );
+      } catch (e) {
+        AppLogger.e('[BudgetController] ❌ Error formatting phone number: $e');
+        return;
+      }
+
+      // Send SMS alert
+      await _smsChefService.sendBudgetAlert(
+        phoneNumber: phoneNumber,
+        consumedCost: totalConsumedCost,
+        remainingBudget: remainingBudget,
+        totalBudget: totalBudget,
+        thresholdPercentage: thresholdPercentage,
+        isFullConsumption: isFullyConsumed,
+      );
+
+      // Tracking variables are updated in the condition checks above
+
+      AppLogger.i(
+        '[BudgetController] ✅ SMS alert sent successfully to ${phoneNumber.substring(phoneNumber.length - 4)} (consumption: ${usedPercent.toStringAsFixed(1)}%)',
+      );
+    } on SmsChefException catch (e) {
+      AppLogger.e(
+        '[BudgetController] ❌ Failed to send SMS alert: ${e.message}',
+      );
+    } catch (e) {
+      AppLogger.e('[BudgetController] ❌ Error sending SMS alert: $e');
+    }
+  }
+
+  /// Format phone number to international format (+63...) for SMS Chef
+  String _formatPhoneNumber(String phoneNumber) {
+    // Remove all non-digit characters except +
+    String cleaned = phoneNumber.replaceAll(RegExp(r'[^\d+]'), '');
+
+    if (cleaned.isEmpty) {
+      throw Exception('Invalid phone number: No digits found');
+    }
+
+    // Already in international format
+    if (cleaned.startsWith('+63')) {
+      return cleaned;
+    }
+
+    // Philippine number starting with 0 (e.g., 09123456789)
+    if (cleaned.startsWith('0') && cleaned.length >= 11) {
+      return '+63${cleaned.substring(1)}';
+    }
+
+    // Philippine number starting with 63 (e.g., 639123456789)
+    if (cleaned.startsWith('63') && cleaned.length >= 12) {
+      return '+$cleaned';
+    }
+
+    // If it's 10 digits, assume it's a local PH number and add +63
+    if (cleaned.length == 10) {
+      return '+63$cleaned';
+    }
+
+    // If it's 11 digits and doesn't start with 0, assume it's already without country code
+    if (cleaned.length == 11 && !cleaned.startsWith('0')) {
+      return '+63$cleaned';
+    }
+
+    // Fallback: try to add +63 prefix
+    return '+63$cleaned';
+  }
+
   /// Reset notification flag (call this on new day)
   void resetNotificationFlag() {
     _notificationSentForToday = false;
+    _smsSentForThreshold = false;
+    _smsSentForFullConsumption = false;
     _lastThresholdThatTriggered = null;
   }
 

@@ -37,12 +37,27 @@ class BudgetTargetSection extends StatelessWidget {
         color: Theme.of(context).colorScheme.surface,
         borderRadius: BorderRadius.circular(16),
         border: Border(
-          left: BorderSide(color: AppColor.accentGreen, width: 4),
-          right: BorderSide(color: AppColor.accentGreen, width: 4),
+          left: BorderSide(
+            color:
+                Theme.of(context).brightness == Brightness.dark
+                    ? AppColor.accentGreen
+                    : Theme.of(context).colorScheme.primary,
+            width: 4,
+          ),
+          right: BorderSide(
+            color:
+                Theme.of(context).brightness == Brightness.dark
+                    ? AppColor.accentGreen
+                    : Theme.of(context).colorScheme.primary,
+            width: 4,
+          ),
         ),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withAlpha((0.05 * 255).toInt()),
+            color:
+                Theme.of(context).brightness == Brightness.dark
+                    ? Colors.black.withAlpha((0.3 * 255).toInt())
+                    : Colors.black.withAlpha((0.05 * 255).toInt()),
             blurRadius: 8,
             offset: const Offset(0, 2),
           ),
@@ -53,9 +68,18 @@ class BudgetTargetSection extends StatelessWidget {
         children: [
           Row(
             children: [
-              Icon(Iconsax.flag, color: AppColor.accentGreen, size: 24),
+              Icon(
+                Iconsax.flag,
+                color: Theme.of(context).colorScheme.primary,
+                size: 24,
+              ),
               SizedBox(width: Insets.sm),
-              Text('Budget Target', style: ResponsiveText.stat(context)),
+              Text(
+                'Budget Target',
+                style: ResponsiveText.stat(
+                  context,
+                ).copyWith(color: Theme.of(context).colorScheme.onSurface),
+              ),
             ],
           ),
           SizedBox(height: Insets.md),
@@ -87,7 +111,9 @@ class BudgetTargetSection extends StatelessWidget {
         SizedBox(height: Insets.md),
         Text(
           'Set your budget target to track energy spending in real-time',
-          style: ResponsiveText.body(context),
+          style: ResponsiveText.body(context).copyWith(
+            color: Theme.of(context).colorScheme.onSurface.withAlpha(179),
+          ),
           textAlign: TextAlign.center,
         ),
       ],
@@ -109,7 +135,9 @@ class BudgetTargetSection extends StatelessWidget {
           child: LinearProgressIndicator(
             value: percentUsed.clamp(0.0, 1.0),
             minHeight: 12,
-            backgroundColor: AppColor.disabled,
+            backgroundColor: Theme.of(
+              context,
+            ).colorScheme.surfaceContainerHighest.withAlpha(77),
             valueColor: AlwaysStoppedAnimation<Color>(statusColor),
           ),
         ),
@@ -123,12 +151,18 @@ class BudgetTargetSection extends StatelessWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text('Consumed', style: ResponsiveText.label(context)),
+                  Text(
+                    'Consumed',
+                    style: ResponsiveText.label(
+                      context,
+                    ).copyWith(color: Theme.of(context).colorScheme.onSurface),
+                  ),
                   Text(
                     '₱${NumberFormat.currency(locale: 'en_PH', symbol: '').format(controller.consumedCost)} / ₱${NumberFormat.currency(locale: 'en_PH', symbol: '').format(controller.totalBudget)}',
-                    style: ResponsiveText.body(
-                      context,
-                    ).copyWith(fontWeight: FontWeight.bold),
+                    style: ResponsiveText.body(context).copyWith(
+                      fontWeight: FontWeight.bold,
+                      color: Theme.of(context).colorScheme.onSurface,
+                    ),
                   ),
                 ],
               ),
@@ -155,17 +189,36 @@ class BudgetTargetSection extends StatelessWidget {
           padding: EdgeInsets.all(Insets.md),
           decoration: BoxDecoration(
             gradient: LinearGradient(
-              colors: [
-                AppColor.accentGreen.withAlpha(26),
-                AppColor.lowConsumption.withAlpha(26),
-              ],
+              colors:
+                  Theme.of(context).brightness == Brightness.dark
+                      ? [
+                        AppColor.accentGreen.withAlpha(26),
+                        AppColor.lowConsumption.withAlpha(26),
+                      ]
+                      : [
+                        Theme.of(context).colorScheme.primary.withAlpha(26),
+                        Theme.of(context).colorScheme.secondary.withAlpha(26),
+                      ],
             ),
             borderRadius: BorderRadius.circular(12),
-            border: Border.all(color: AppColor.accentGreen.withAlpha(77)),
+            border: Border.all(
+              color:
+                  Theme.of(context).brightness == Brightness.dark
+                      ? AppColor.accentGreen
+                      : Theme.of(context).colorScheme.primary.withAlpha(77),
+              width: Theme.of(context).brightness == Brightness.dark ? 2 : 1,
+            ),
           ),
           child: Row(
             children: [
-              Icon(Iconsax.wallet_money, color: AppColor.accentGreen, size: 24),
+              Icon(
+                Iconsax.wallet_money,
+                color:
+                    Theme.of(context).brightness == Brightness.dark
+                        ? AppColor.accentGreen
+                        : Theme.of(context).colorScheme.primary,
+                size: 24,
+              ),
               SizedBox(width: Insets.md),
               Expanded(
                 child: Column(
@@ -173,13 +226,18 @@ class BudgetTargetSection extends StatelessWidget {
                   children: [
                     Text(
                       'Remaining Budget',
-                      style: ResponsiveText.label(context),
+                      style: ResponsiveText.label(context).copyWith(
+                        color: Theme.of(context).colorScheme.onSurface,
+                      ),
                     ),
                     Text(
                       '₱${NumberFormat.currency(locale: 'en_PH', symbol: '').format(controller.remainingBudget)}',
-                      style: ResponsiveText.headline(
-                        context,
-                      ).copyWith(color: AppColor.accentGreen),
+                      style: ResponsiveText.headline(context).copyWith(
+                        color:
+                            Theme.of(context).brightness == Brightness.dark
+                                ? AppColor.accentGreen
+                                : Theme.of(context).colorScheme.primary,
+                      ),
                     ),
                   ],
                 ),
@@ -227,13 +285,18 @@ class BudgetTargetSection extends StatelessWidget {
           child: Row(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              Icon(Iconsax.edit, color: Colors.white, size: 20),
+              Icon(
+                Iconsax.edit,
+                color: Theme.of(context).colorScheme.onPrimary,
+                size: 20,
+              ),
               SizedBox(width: Insets.sm),
               Text(
                 controller.totalBudget == 0 ? 'Set Budget' : 'Edit Budget',
-                style: ResponsiveText.body(
-                  context,
-                ).copyWith(color: Colors.white, fontWeight: FontWeight.w600),
+                style: ResponsiveText.body(context).copyWith(
+                  color: Theme.of(context).colorScheme.onPrimary,
+                  fontWeight: FontWeight.w600,
+                ),
               ),
             ],
           ),

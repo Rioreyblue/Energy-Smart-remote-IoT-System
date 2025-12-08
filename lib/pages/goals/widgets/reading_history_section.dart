@@ -18,12 +18,21 @@ class ReadingHistorySection extends StatelessWidget {
         color: Theme.of(context).colorScheme.surface,
         borderRadius: BorderRadius.circular(16),
         border: Border(
-          left: BorderSide(color: AppColor.accentRed, width: 4),
-          right: BorderSide(color: AppColor.accentRed, width: 4),
+          left: BorderSide(
+            color: Theme.of(context).colorScheme.error,
+            width: 4,
+          ),
+          right: BorderSide(
+            color: Theme.of(context).colorScheme.error,
+            width: 4,
+          ),
         ),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withAlpha((0.05 * 255).toInt()),
+            color:
+                Theme.of(context).brightness == Brightness.dark
+                    ? Colors.black.withAlpha((0.3 * 255).toInt())
+                    : Colors.black.withAlpha((0.05 * 255).toInt()),
             blurRadius: 8,
             offset: const Offset(0, 2),
           ),
@@ -40,13 +49,20 @@ class ReadingHistorySection extends StatelessWidget {
                 size: 24,
               ),
               SizedBox(width: Insets.sm),
-              Text('Reading History', style: ResponsiveText.stat(context)),
+              Text(
+                'Reading History',
+                style: ResponsiveText.stat(
+                  context,
+                ).copyWith(color: Theme.of(context).colorScheme.onSurface),
+              ),
             ],
           ),
           SizedBox(height: Insets.md),
           Text(
             'Your recent meter readings and consumption history.',
-            style: ResponsiveText.body(context),
+            style: ResponsiveText.body(context).copyWith(
+              color: Theme.of(context).colorScheme.onSurface.withAlpha(179),
+            ),
           ),
           SizedBox(height: Insets.lg),
 
@@ -61,9 +77,9 @@ class ReadingHistorySection extends StatelessWidget {
             Center(
               child: Text(
                 '${readingHistory.length - 5} more readings...',
-                style: ResponsiveText.caption(
-                  context,
-                ).copyWith(color: AppColor.disabled),
+                style: ResponsiveText.caption(context).copyWith(
+                  color: Theme.of(context).colorScheme.onSurface.withAlpha(128),
+                ),
               ),
             ),
           ],
@@ -82,7 +98,9 @@ class ReadingHistorySection extends StatelessWidget {
       decoration: BoxDecoration(
         color: Theme.of(context).colorScheme.surface,
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: AppColor.disabled.withAlpha(51)),
+        border: Border.all(
+          color: Theme.of(context).colorScheme.outline.withOpacity(0.2),
+        ),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -92,9 +110,10 @@ class ReadingHistorySection extends StatelessWidget {
             children: [
               Text(
                 '${reading.startDate.day}/${reading.startDate.month}/${reading.startDate.year} - ${reading.endDate.day}/${reading.endDate.month}/${reading.endDate.year}',
-                style: ResponsiveText.label(
-                  context,
-                ).copyWith(fontWeight: FontWeight.w600),
+                style: ResponsiveText.label(context).copyWith(
+                  fontWeight: FontWeight.w600,
+                  color: Theme.of(context).colorScheme.onSurface,
+                ),
               ),
               Text(
                 '₱${reading.estimatedBill.toStringAsFixed(2)}',
@@ -108,11 +127,17 @@ class ReadingHistorySection extends StatelessWidget {
           SizedBox(height: Insets.xm),
           Row(
             children: [
-              Icon(Iconsax.flash_1, color: AppColor.accentGreen, size: 16),
+              Icon(
+                Iconsax.flash_1,
+                color: Theme.of(context).colorScheme.primary,
+                size: 16,
+              ),
               SizedBox(width: Insets.xm),
               Text(
                 '${reading.consumption.toStringAsFixed(2)} kWh',
-                style: ResponsiveText.body(context),
+                style: ResponsiveText.body(
+                  context,
+                ).copyWith(color: Theme.of(context).colorScheme.onSurface),
               ),
               SizedBox(width: Insets.md),
               Icon(
@@ -123,7 +148,9 @@ class ReadingHistorySection extends StatelessWidget {
               SizedBox(width: Insets.xm),
               Text(
                 '₱${reading.ratePerKwh.toStringAsFixed(4)}/kWh',
-                style: ResponsiveText.body(context),
+                style: ResponsiveText.body(
+                  context,
+                ).copyWith(color: Theme.of(context).colorScheme.onSurface),
               ),
             ],
           ),

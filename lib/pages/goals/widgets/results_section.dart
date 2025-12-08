@@ -28,12 +28,21 @@ class ResultsSection extends StatelessWidget {
         color: Theme.of(context).colorScheme.surface,
         borderRadius: BorderRadius.circular(16),
         border: Border(
-          left: BorderSide(color: AppColor.lowConsumption, width: 4),
-          right: BorderSide(color: AppColor.lowConsumption, width: 4),
+          left: BorderSide(
+            color: Theme.of(context).colorScheme.secondary,
+            width: 4,
+          ),
+          right: BorderSide(
+            color: Theme.of(context).colorScheme.secondary,
+            width: 4,
+          ),
         ),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withAlpha((0.05 * 255).toInt()),
+            color:
+                Theme.of(context).brightness == Brightness.dark
+                    ? Colors.black.withAlpha((0.3 * 255).toInt())
+                    : Colors.black.withAlpha((0.05 * 255).toInt()),
             blurRadius: 8,
             offset: const Offset(0, 2),
           ),
@@ -44,9 +53,18 @@ class ResultsSection extends StatelessWidget {
         children: [
           Row(
             children: [
-              Icon(Iconsax.chart_2, color: AppColor.accentGreen, size: 24),
+              Icon(
+                Iconsax.chart_2,
+                color: Theme.of(context).colorScheme.primary,
+                size: 24,
+              ),
               SizedBox(width: Insets.sm),
-              Text('Calculation Results', style: ResponsiveText.stat(context)),
+              Text(
+                'Calculation Results',
+                style: ResponsiveText.stat(
+                  context,
+                ).copyWith(color: Theme.of(context).colorScheme.onSurface),
+              ),
             ],
           ),
           SizedBox(height: Insets.md),
@@ -55,22 +73,28 @@ class ResultsSection extends StatelessWidget {
           Container(
             padding: EdgeInsets.all(Insets.md),
             decoration: BoxDecoration(
-              color: AppColor.accentGreen.withAlpha(26),
+              color: Theme.of(context).colorScheme.secondary.withAlpha(26),
               borderRadius: BorderRadius.circular(12),
             ),
             child: Row(
               children: [
-                Icon(Iconsax.flash_1, color: AppColor.accentGreen, size: 20),
+                Icon(
+                  Iconsax.flash_1,
+                  color: Theme.of(context).colorScheme.secondary,
+                  size: 20,
+                ),
                 SizedBox(width: Insets.sm),
                 Text(
                   'Energy Consumption: ',
-                  style: ResponsiveText.body(context),
+                  style: ResponsiveText.body(
+                    context,
+                  ).copyWith(color: Theme.of(context).colorScheme.onSurface),
                 ),
                 Text(
                   '${consumption.toStringAsFixed(2)} kWh',
                   style: ResponsiveText.body(context).copyWith(
                     fontWeight: FontWeight.bold,
-                    color: AppColor.accentGreen,
+                    color: Theme.of(context).colorScheme.secondary,
                   ),
                 ),
               ],
@@ -93,7 +117,12 @@ class ResultsSection extends StatelessWidget {
                   size: 20,
                 ),
                 SizedBox(width: Insets.sm),
-                Text('Estimated Bill: ', style: ResponsiveText.body(context)),
+                Text(
+                  'Estimated Bill: ',
+                  style: ResponsiveText.body(
+                    context,
+                  ).copyWith(color: Theme.of(context).colorScheme.onSurface),
+                ),
                 Text(
                   '₱${estimatedBill.toStringAsFixed(2)}',
                   style: ResponsiveText.body(context).copyWith(
@@ -112,11 +141,14 @@ class ResultsSection extends StatelessWidget {
               Expanded(
                 child: ElevatedButton.icon(
                   onPressed: isSaving ? null : onSave,
-                  icon: Icon(Iconsax.save_2, color: Colors.white),
+                  icon: Icon(
+                    Iconsax.save_2,
+                    color: Theme.of(context).colorScheme.onPrimary,
+                  ),
                   label: Text(
                     'Save Reading',
                     style: ResponsiveText.body(context).copyWith(
-                      color: Colors.white,
+                      color: Theme.of(context).colorScheme.onPrimary,
                       fontWeight: FontWeight.w600,
                     ),
                   ),

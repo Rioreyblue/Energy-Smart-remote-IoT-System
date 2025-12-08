@@ -3,6 +3,7 @@ import 'package:iconsax/iconsax.dart';
 import 'package:exercise_app/constants/constant.dart';
 import 'package:exercise_app/services/predictive_dataset_service.dart';
 import 'package:exercise_app/services/prediction_service.dart';
+import 'package:exercise_app/services/appliance_alias_service.dart';
 import 'package:exercise_app/utils/snackbar_utils.dart';
 import 'package:exercise_app/models/prediction_result_model.dart';
 import 'package:exercise_app/utils/monitoring_prediction_utils.dart';
@@ -81,15 +82,42 @@ class PredictiveConsumptionCard extends StatefulWidget {
 class _PredictiveConsumptionCardState extends State<PredictiveConsumptionCard> {
   final PredictiveDatasetService _datasetService = PredictiveDatasetService();
   final PredictionService _predictionService = PredictionService();
+  final ApplianceAliasService _aliasService = ApplianceAliasService();
   PredictionResultModel? _currentPrediction;
   bool _isGeneratingPrediction = false;
+  Map<String, String> _applianceAliases = {};
 
   @override
   void initState() {
     super.initState();
     _datasetService.initialize();
     _loadLatestPrediction();
+    _loadApplianceAliases();
     _datasetService.addListener(_onDatasetChanged);
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    // Refresh aliases when page becomes visible again (e.g., after renaming)
+    _loadApplianceAliases();
+  }
+
+  Future<void> _loadApplianceAliases() async {
+    try {
+      final aliases = await _aliasService.getAliases();
+      if (mounted) {
+        setState(() {
+          _applianceAliases = aliases;
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _applianceAliases = {};
+        });
+      }
+    }
   }
 
   @override
@@ -235,9 +263,7 @@ class _PredictiveConsumptionCardState extends State<PredictiveConsumptionCard> {
               ),
               SizedBox(height: Insets.lg),
 
-              // Dataset Info with Source Indicator
-              _buildDatasetInfo(context),
-              SizedBox(height: Insets.sm),
+              // Data Source Indicator (improved, consolidated)
               _buildDataSourceIndicator(context),
               SizedBox(height: Insets.md),
 
@@ -281,56 +307,13 @@ class _PredictiveConsumptionCardState extends State<PredictiveConsumptionCard> {
     );
   }
 
-  Widget _buildDatasetInfo(BuildContext context) {
-    final cardColors = _PredictiveCardColors.fromContext(context);
-    return Container(
-      padding: EdgeInsets.all(Insets.md),
-      decoration: BoxDecoration(
-        color: cardColors.surfaceColor,
-        borderRadius: BorderRadius.circular(12),
-      ),
-      child: Row(
-        children: [
-          Icon(Iconsax.document, color: cardColors.iconColor, size: 20),
-          SizedBox(width: Insets.sm),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'Dataset Loaded',
-                  style: ResponsiveText.label(
-                    context,
-                  ).copyWith(color: cardColors.secondaryTextColor),
-                ),
-                Text(
-                  '${_datasetService.datasetSize} records',
-                  style: ResponsiveText.body(context).copyWith(
-                    color: cardColors.primaryTextColor,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-              ],
-            ),
-          ),
-          if (_datasetService.lastImportDate != null)
-            Text(
-              'Imported ${_formatDate(_datasetService.lastImportDate!)}',
-              style: ResponsiveText.caption(
-                context,
-              ).copyWith(color: cardColors.secondaryTextColor),
-            ),
-        ],
-      ),
-    );
-  }
-
   Widget _buildDataSourceIndicator(BuildContext context) {
     final cardColors = _PredictiveCardColors.fromContext(context);
     final dataSourceType = _datasetService.dataSource;
     final dataSourceInfo = _datasetService.getDataSourceInfo();
     final isOnline = dataSourceInfo['isOnline'] as bool? ?? false;
     final lastSyncTime = dataSourceInfo['lastSyncTime'] as DateTime?;
+    final datasetSize = _datasetService.datasetSize;
 
     Color badgeColor;
     IconData badgeIcon;
@@ -341,168 +324,143 @@ class _PredictiveConsumptionCardState extends State<PredictiveConsumptionCard> {
       case DataSourceType.cloud:
         badgeColor = AppColor.accentGreen;
         badgeIcon = Iconsax.cloud;
-        badgeText = 'Cloud';
+        badgeText = 'Cloud Data';
         statusText = 'Synced from Firestore';
         break;
       case DataSourceType.local:
         badgeColor = AppColor.mediumConsumption;
         badgeIcon = Iconsax.document_download;
-        badgeText = 'Local';
+        badgeText = 'Local Data';
         statusText = 'Offline backup';
         break;
       case DataSourceType.embedded:
         badgeColor = AppColor.disabled;
         badgeIcon = Iconsax.document;
-        badgeText = 'Embedded';
-        statusText = 'Default fallback';
+        badgeText = 'Default Data';
+        statusText = 'Sample dataset';
         break;
     }
 
-    return Column(
-      children: [
-        Container(
-          padding: EdgeInsets.symmetric(
-            horizontal: Insets.md,
-            vertical: Insets.sm,
-          ),
-          decoration: BoxDecoration(
-            color: cardColors.surfaceColor,
-            borderRadius: BorderRadius.circular(10),
-            border: Border.all(
-              color: badgeColor.withAlpha((0.5 * 255).toInt()),
-              width: 1,
+    return Container(
+      padding: EdgeInsets.all(Insets.md),
+      decoration: BoxDecoration(
+        color: cardColors.surfaceColor,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(
+          color: badgeColor.withAlpha((0.3 * 255).toInt()),
+          width: 1,
+        ),
+      ),
+      child: Row(
+        children: [
+          Container(
+            padding: EdgeInsets.all(8),
+            decoration: BoxDecoration(
+              color: badgeColor.withAlpha((0.2 * 255).toInt()),
+              borderRadius: BorderRadius.circular(10),
             ),
+            child: Icon(badgeIcon, color: badgeColor, size: 20),
           ),
-          child: Row(
-            children: [
-              Container(
-                padding: EdgeInsets.all(6),
-                decoration: BoxDecoration(
-                  color: badgeColor.withAlpha((0.3 * 255).toInt()),
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: Icon(badgeIcon, color: cardColors.iconColor, size: 16),
-              ),
-              SizedBox(width: Insets.sm),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
+          SizedBox(width: Insets.md),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
                   children: [
-                    Row(
-                      children: [
-                        Text(
-                          badgeText,
-                          style: ResponsiveText.label(context).copyWith(
-                            color: cardColors.primaryTextColor,
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                        SizedBox(width: Insets.xm),
-                        // Online/Offline indicator
-                        Container(
-                          width: 8,
-                          height: 8,
-                          decoration: BoxDecoration(
-                            color:
-                                isOnline ? AppColor.accentGreen : Colors.grey,
-                            shape: BoxShape.circle,
-                          ),
-                        ),
-                      ],
-                    ),
                     Text(
-                      statusText,
-                      style: ResponsiveText.caption(context).copyWith(
-                        color: cardColors.secondaryTextColor,
-                        fontSize: 10,
+                      badgeText,
+                      style: ResponsiveText.label(context).copyWith(
+                        color: cardColors.primaryTextColor,
+                        fontWeight: FontWeight.w600,
                       ),
                     ),
-                    // Last sync time
-                    if (lastSyncTime != null) ...[
-                      SizedBox(height: 2),
-                      Text(
-                        'Last sync: ${_formatDate(lastSyncTime)}',
-                        style: ResponsiveText.caption(context).copyWith(
-                          color: cardColors.tertiaryTextColor,
-                          fontSize: 9,
-                        ),
+                    SizedBox(width: Insets.sm),
+                    // Online/Offline indicator
+                    Container(
+                      width: 8,
+                      height: 8,
+                      decoration: BoxDecoration(
+                        color: isOnline ? AppColor.accentGreen : Colors.grey,
+                        shape: BoxShape.circle,
                       ),
-                    ],
+                    ),
                   ],
                 ),
-              ),
-              if (dataSourceType != DataSourceType.cloud)
-                _datasetService.isLoading || _isGeneratingPrediction
-                    ? SizedBox(
-                      width: 18,
-                      height: 18,
-                      child: CircularProgressIndicator(
-                        strokeWidth: 2,
-                        valueColor: AlwaysStoppedAnimation<Color>(
-                          cardColors.iconColor,
-                        ),
+                SizedBox(height: 2),
+                Row(
+                  children: [
+                    Text(
+                      '$datasetSize records',
+                      style: ResponsiveText.body(context).copyWith(
+                        color: cardColors.primaryTextColor,
+                        fontWeight: FontWeight.bold,
+                        fontSize: 13,
                       ),
-                    )
-                    : IconButton(
-                      icon: Icon(
-                        Iconsax.refresh,
-                        color: cardColors.iconColor,
-                        size: 18,
-                      ),
-                      onPressed: _onSyncPressed,
-                      tooltip:
-                          dataSourceType == DataSourceType.embedded
-                              ? 'Refresh Prediction'
-                              : isOnline
-                              ? 'Sync from Cloud'
-                              : 'Offline - Cannot sync',
-                      padding: EdgeInsets.zero,
-                      constraints: BoxConstraints(),
                     ),
-            ],
-          ),
-        ),
-        // Warning for embedded dataset
-        if (dataSourceType == DataSourceType.embedded) ...[
-          SizedBox(height: Insets.sm),
-          Container(
-            padding: EdgeInsets.all(Insets.sm),
-            decoration: BoxDecoration(
-              color: AppColor.accentRed.withAlpha((0.2 * 255).toInt()),
-              borderRadius: BorderRadius.circular(8),
-              border: Border.all(
-                color: AppColor.accentRed.withAlpha((0.5 * 255).toInt()),
-                width: 1,
-              ),
-            ),
-            child: Row(
-              children: [
-                Icon(Iconsax.warning_2, color: AppColor.accentRed, size: 16),
-                SizedBox(width: Insets.xm),
-                Expanded(
-                  child: Text(
-                    'Using default dataset. Sync from cloud for accurate predictions.',
+                    SizedBox(width: Insets.sm),
+                    Text(
+                      '•',
+                      style: ResponsiveText.caption(
+                        context,
+                      ).copyWith(color: cardColors.secondaryTextColor),
+                    ),
+                    SizedBox(width: Insets.sm),
+                    Expanded(
+                      child: Text(
+                        statusText,
+                        style: ResponsiveText.caption(context).copyWith(
+                          color: cardColors.secondaryTextColor,
+                          fontSize: 11,
+                        ),
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                  ],
+                ),
+                if (lastSyncTime != null) ...[
+                  SizedBox(height: 2),
+                  Text(
+                    'Updated ${_formatDate(lastSyncTime)}',
                     style: ResponsiveText.caption(context).copyWith(
-                      color: cardColors.primaryTextColor,
+                      color: cardColors.tertiaryTextColor,
                       fontSize: 10,
                     ),
                   ),
-                ),
-                TextButton(
-                  onPressed: _onSyncPressed,
-                  child: Text(
-                    isOnline ? 'Sync Now' : 'Refresh Prediction',
-                    style: ResponsiveText.caption(context).copyWith(
-                      color: AppColor.accentRed,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                ),
+                ],
               ],
             ),
           ),
+          if (dataSourceType != DataSourceType.cloud)
+            _datasetService.isLoading || _isGeneratingPrediction
+                ? SizedBox(
+                  width: 20,
+                  height: 20,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2,
+                    valueColor: AlwaysStoppedAnimation<Color>(
+                      cardColors.iconColor,
+                    ),
+                  ),
+                )
+                : IconButton(
+                  icon: Icon(
+                    Iconsax.refresh,
+                    color: cardColors.iconColor,
+                    size: 20,
+                  ),
+                  onPressed: _onSyncPressed,
+                  tooltip:
+                      dataSourceType == DataSourceType.embedded
+                          ? 'Refresh Prediction'
+                          : isOnline
+                          ? 'Sync from Cloud'
+                          : 'Offline - Cannot sync',
+                  padding: EdgeInsets.zero,
+                  constraints: BoxConstraints(),
+                ),
         ],
-      ],
+      ),
     );
   }
 
@@ -952,8 +910,13 @@ class _PredictiveConsumptionCardState extends State<PredictiveConsumptionCard> {
   }
 
   String _formatApplianceName(String applianceId) {
-    // Convert appliance ID to readable name
-    // e.g., "appliances_001" -> "Appliance 1"
+    // First check if there's a custom alias/display name from Quick Controls
+    if (_applianceAliases.containsKey(applianceId) &&
+        _applianceAliases[applianceId]!.isNotEmpty) {
+      return _applianceAliases[applianceId]!;
+    }
+
+    // Fallback to default formatting
     if (applianceId.startsWith('appliances_')) {
       final number = applianceId.replaceAll('appliances_', '');
       return 'Appliance $number';

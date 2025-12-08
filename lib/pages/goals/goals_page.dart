@@ -190,9 +190,10 @@ class _GoalsPageState extends State<GoalsPage> {
               // Title
               Text(
                 'Confirm User Type',
-                style: ResponsiveText.stat(
-                  context,
-                ).copyWith(fontWeight: FontWeight.bold),
+                style: ResponsiveText.stat(context).copyWith(
+                  fontWeight: FontWeight.bold,
+                  color: Theme.of(context).colorScheme.onSurface,
+                ),
                 textAlign: TextAlign.center,
               ),
               SizedBox(height: Insets.md),
@@ -200,7 +201,9 @@ class _GoalsPageState extends State<GoalsPage> {
               // Message
               Text(
                 'You have selected "${_selectedUserType == 'household' ? 'Household' : 'Small Business'}".\n\nThis choice cannot be changed after confirmation. Are you sure you want to proceed?',
-                style: ResponsiveText.body(context),
+                style: ResponsiveText.body(context).copyWith(
+                  color: Theme.of(context).colorScheme.onSurface.withAlpha(179),
+                ),
                 textAlign: TextAlign.center,
               ),
               SizedBox(height: Insets.lg),
@@ -214,8 +217,12 @@ class _GoalsPageState extends State<GoalsPage> {
                         Navigator.of(context).pop();
                       },
                       style: ElevatedButton.styleFrom(
-                        backgroundColor: AppColor.surface,
-                        foregroundColor: AppColor.primary,
+                        backgroundColor:
+                            Theme.of(
+                              context,
+                            ).colorScheme.surfaceContainerHighest,
+                        foregroundColor:
+                            Theme.of(context).colorScheme.onSurface,
                         padding: EdgeInsets.symmetric(vertical: Insets.md),
                         shape: RoundedRectangleBorder(
                           borderRadius: BorderRadius.circular(12),
@@ -256,7 +263,7 @@ class _GoalsPageState extends State<GoalsPage> {
                         child: Text(
                           'Confirm',
                           style: ResponsiveText.body(context).copyWith(
-                            color: Colors.white,
+                            color: Theme.of(context).colorScheme.onPrimary,
                             fontWeight: FontWeight.w600,
                           ),
                         ),
@@ -349,11 +356,15 @@ class _GoalsPageState extends State<GoalsPage> {
                 child: Column(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
-                    CircularProgressIndicator(color: AppColor.primary),
+                    CircularProgressIndicator(
+                      color: Theme.of(context).colorScheme.primary,
+                    ),
                     SizedBox(height: Insets.md),
                     Text(
                       'Loading goals data...',
-                      style: ResponsiveText.body(context),
+                      style: ResponsiveText.body(context).copyWith(
+                        color: Theme.of(context).colorScheme.onSurface,
+                      ),
                     ),
                   ],
                 ),
@@ -421,15 +432,22 @@ class _GoalsPageState extends State<GoalsPage> {
   }
 
   Widget _buildUserTypeSelectionSection(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    final brightness = Theme.of(context).brightness;
+    final isDark = brightness == Brightness.dark;
+
     return Container(
       width: double.infinity,
       padding: EdgeInsets.all(Insets.lg),
       decoration: BoxDecoration(
-        color: Theme.of(context).colorScheme.surface,
+        color: colorScheme.surface,
         borderRadius: BorderRadius.circular(16),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withAlpha((0.05 * 255).toInt()),
+            color:
+                isDark
+                    ? Colors.black.withAlpha((0.3 * 255).toInt())
+                    : Colors.black.withAlpha((0.05 * 255).toInt()),
             blurRadius: 8,
             offset: const Offset(0, 2),
           ),
@@ -440,15 +458,26 @@ class _GoalsPageState extends State<GoalsPage> {
         children: [
           Row(
             children: [
-              Icon(Iconsax.user, color: AppColor.accentGreen, size: 24),
+              Icon(
+                Iconsax.user,
+                color: Theme.of(context).colorScheme.primary,
+                size: 24,
+              ),
               SizedBox(width: Insets.sm),
-              Text('Type of User', style: ResponsiveText.stat(context)),
+              Text(
+                'Type of User',
+                style: ResponsiveText.stat(
+                  context,
+                ).copyWith(color: colorScheme.onSurface),
+              ),
             ],
           ),
           SizedBox(height: Insets.md),
           Text(
             'Please select your user type to personalize your energy management experience.',
-            style: ResponsiveText.body(context),
+            style: ResponsiveText.body(
+              context,
+            ).copyWith(color: colorScheme.onSurface.withAlpha(179)),
           ),
           SizedBox(height: Insets.lg),
 
@@ -501,9 +530,10 @@ class _GoalsPageState extends State<GoalsPage> {
                 ),
                 child: Text(
                   'Confirm Selection',
-                  style: ResponsiveText.body(
-                    context,
-                  ).copyWith(color: Colors.white, fontWeight: FontWeight.w600),
+                  style: ResponsiveText.body(context).copyWith(
+                    color: Theme.of(context).colorScheme.onPrimary,
+                    fontWeight: FontWeight.w600,
+                  ),
                 ),
               ),
             ),
@@ -520,6 +550,9 @@ class _GoalsPageState extends State<GoalsPage> {
     String value,
   ) {
     final isSelected = _selectedUserType == value;
+    final colorScheme = Theme.of(context).colorScheme;
+    final brightness = Theme.of(context).brightness;
+    final isDark = brightness == Brightness.dark;
 
     return GestureDetector(
       onTap: () {
@@ -532,11 +565,14 @@ class _GoalsPageState extends State<GoalsPage> {
         decoration: BoxDecoration(
           color:
               isSelected
-                  ? AppColor.accentGreen.withAlpha(26)
-                  : AppColor.surface,
+                  ? AppColor.accentGreen.withAlpha(isDark ? 40 : 26)
+                  : colorScheme.surface,
           borderRadius: BorderRadius.circular(12),
           border: Border.all(
-            color: isSelected ? AppColor.accentGreen : AppColor.disabled,
+            color:
+                isSelected
+                    ? AppColor.accentGreen
+                    : colorScheme.outline.withAlpha(77),
             width: isSelected ? 2 : 1,
           ),
         ),
@@ -544,7 +580,10 @@ class _GoalsPageState extends State<GoalsPage> {
           children: [
             Icon(
               icon,
-              color: isSelected ? AppColor.accentGreen : AppColor.disabled,
+              color:
+                  isSelected
+                      ? AppColor.accentGreen
+                      : colorScheme.onSurface.withAlpha(128),
               size: 32,
             ),
             SizedBox(height: Insets.sm),
@@ -552,7 +591,10 @@ class _GoalsPageState extends State<GoalsPage> {
               title,
               style: ResponsiveText.body(context).copyWith(
                 fontWeight: isSelected ? FontWeight.w600 : FontWeight.normal,
-                color: isSelected ? AppColor.accentGreen : AppColor.disabled,
+                color:
+                    isSelected
+                        ? AppColor.accentGreen
+                        : colorScheme.onSurface.withAlpha(179),
               ),
             ),
           ],

@@ -79,17 +79,26 @@ class _MeterReadingSectionState extends State<MeterReadingSection> {
         borderRadius: BorderRadius.circular(16),
         border: Border(
           left: BorderSide(
-            color: Theme.of(context).colorScheme.primary,
+            color:
+                Theme.of(context).brightness == Brightness.dark
+                    ? AppColor.accentGreen
+                    : Theme.of(context).colorScheme.primary,
             width: 4,
           ),
           right: BorderSide(
-            color: Theme.of(context).colorScheme.primary,
+            color:
+                Theme.of(context).brightness == Brightness.dark
+                    ? AppColor.accentGreen
+                    : Theme.of(context).colorScheme.primary,
             width: 4,
           ),
         ),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withAlpha((0.05 * 255).toInt()),
+            color:
+                Theme.of(context).brightness == Brightness.dark
+                    ? Colors.black.withAlpha((0.3 * 255).toInt())
+                    : Colors.black.withAlpha((0.05 * 255).toInt()),
             blurRadius: 8,
             offset: const Offset(0, 2),
           ),
@@ -102,17 +111,27 @@ class _MeterReadingSectionState extends State<MeterReadingSection> {
             children: [
               Icon(
                 Iconsax.document_text,
-                color: AppColor.accentGreen,
+                color:
+                    Theme.of(context).brightness == Brightness.dark
+                        ? AppColor.accentGreen
+                        : Theme.of(context).colorScheme.primary,
                 size: 24,
               ),
               SizedBox(width: Insets.sm),
-              Text('Meter Reading Input', style: ResponsiveText.stat(context)),
+              Text(
+                'Meter Reading Input',
+                style: ResponsiveText.stat(
+                  context,
+                ).copyWith(color: Theme.of(context).colorScheme.onSurface),
+              ),
             ],
           ),
           SizedBox(height: Insets.md),
           Text(
             'Enter your meter readings to calculate energy consumption and estimated bill.',
-            style: ResponsiveText.body(context),
+            style: ResponsiveText.body(context).copyWith(
+              color: Theme.of(context).colorScheme.onSurface.withAlpha(179),
+            ),
           ),
           SizedBox(height: Insets.lg),
 
@@ -121,7 +140,10 @@ class _MeterReadingSectionState extends State<MeterReadingSection> {
             listenable: widget.budgetController,
             builder: (context, child) {
               if (widget.budgetController.totalKwhUsed > 0) {
-                final primaryColor = Theme.of(context).colorScheme.primary;
+                final primaryColor =
+                    Theme.of(context).brightness == Brightness.dark
+                        ? AppColor.accentGreen
+                        : Theme.of(context).colorScheme.primary;
                 return Container(
                   padding: EdgeInsets.all(Insets.md),
                   decoration: BoxDecoration(
@@ -139,7 +161,9 @@ class _MeterReadingSectionState extends State<MeterReadingSection> {
                           children: [
                             Text(
                               'Live Device Total',
-                              style: ResponsiveText.label(context),
+                              style: ResponsiveText.label(context).copyWith(
+                                color: Theme.of(context).colorScheme.onSurface,
+                              ),
                             ),
                             Text(
                               '${widget.budgetController.totalKwhUsed.toStringAsFixed(3)} kWh • ₱${NumberFormat.currency(locale: 'en_PH', symbol: '').format(widget.budgetController.consumedCost)}',
@@ -165,7 +189,12 @@ class _MeterReadingSectionState extends State<MeterReadingSection> {
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Text('Rate per kWh (₱)', style: ResponsiveText.label(context)),
+              Text(
+                'Rate per kWh (₱)',
+                style: ResponsiveText.label(
+                  context,
+                ).copyWith(color: Theme.of(context).colorScheme.onSurface),
+              ),
               if (_isLoadingPowerRate)
                 SizedBox(
                   width: 16,
@@ -193,7 +222,10 @@ class _MeterReadingSectionState extends State<MeterReadingSection> {
                   child: Icon(
                     Iconsax.refresh,
                     size: 16,
-                    color: Theme.of(context).colorScheme.primary,
+                    color:
+                        Theme.of(context).brightness == Brightness.dark
+                            ? AppColor.accentGreen
+                            : Theme.of(context).colorScheme.primary,
                   ),
                 ),
             ],
@@ -205,27 +237,45 @@ class _MeterReadingSectionState extends State<MeterReadingSection> {
             keyboardType: TextInputType.number,
             decoration: InputDecoration(
               hintText: 'Rate: ₱${widget.rateController.text}/kWh',
-              prefixIcon: Icon(Iconsax.money, color: AppColor.accentGreen),
+              prefixIcon: Icon(
+                Iconsax.money,
+                color:
+                    Theme.of(context).brightness == Brightness.dark
+                        ? AppColor.accentGreen
+                        : Theme.of(context).colorScheme.primary,
+              ),
               suffixIcon: Icon(
                 Iconsax.info_circle,
                 size: 16,
-                color: AppColor.disabled,
+                color: Theme.of(context).colorScheme.onSurface.withAlpha(128),
               ),
               helperText: 'Fetched from admin settings (read-only)',
-              helperStyle: ResponsiveText.caption(context),
+              helperStyle: ResponsiveText.caption(context).copyWith(
+                color: Theme.of(context).colorScheme.onSurface.withAlpha(153),
+              ),
               filled: true,
               fillColor: Theme.of(context).colorScheme.surface,
               border: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(12),
-                borderSide: BorderSide(color: AppColor.disabled),
+                borderSide: BorderSide(
+                  color: Theme.of(context).colorScheme.outline.withAlpha(77),
+                ),
               ),
               enabledBorder: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(12),
-                borderSide: BorderSide(color: AppColor.disabled),
+                borderSide: BorderSide(
+                  color: Theme.of(context).colorScheme.outline.withAlpha(77),
+                ),
               ),
               focusedBorder: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(12),
-                borderSide: BorderSide(color: AppColor.accentGreen, width: 2),
+                borderSide: BorderSide(
+                  color:
+                      Theme.of(context).brightness == Brightness.dark
+                          ? AppColor.accentGreen
+                          : Theme.of(context).colorScheme.primary,
+                  width: 2,
+                ),
               ),
             ),
           ),
@@ -238,27 +288,42 @@ class _MeterReadingSectionState extends State<MeterReadingSection> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text('Start Date', style: ResponsiveText.label(context)),
+                    Text(
+                      'Start Date',
+                      style: ResponsiveText.label(context).copyWith(
+                        color: Theme.of(context).colorScheme.onSurface,
+                      ),
+                    ),
                     SizedBox(height: Insets.sm),
                     GestureDetector(
                       onTap: () => widget.onDateSelect(true),
                       child: Container(
                         padding: EdgeInsets.all(Insets.md),
                         decoration: BoxDecoration(
-                          border: Border.all(color: AppColor.disabled),
+                          border: Border.all(
+                            color: Theme.of(
+                              context,
+                            ).colorScheme.outline.withOpacity(0.3),
+                          ),
                           borderRadius: BorderRadius.circular(12),
                         ),
                         child: Row(
                           children: [
                             Icon(
                               Iconsax.calendar,
-                              color: Theme.of(context).colorScheme.primary,
+                              color:
+                                  Theme.of(context).brightness ==
+                                          Brightness.dark
+                                      ? AppColor.accentGreen
+                                      : Theme.of(context).colorScheme.primary,
                               size: 20,
                             ),
                             SizedBox(width: Insets.sm),
                             Text(
                               '${widget.selectedStartDate.day}/${widget.selectedStartDate.month}/${widget.selectedStartDate.year}',
-                              style: ResponsiveText.body(context),
+                              style: ResponsiveText.body(context).copyWith(
+                                color: Theme.of(context).colorScheme.onSurface,
+                              ),
                             ),
                           ],
                         ),
@@ -272,27 +337,42 @@ class _MeterReadingSectionState extends State<MeterReadingSection> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text('End Date', style: ResponsiveText.label(context)),
+                    Text(
+                      'End Date',
+                      style: ResponsiveText.label(context).copyWith(
+                        color: Theme.of(context).colorScheme.onSurface,
+                      ),
+                    ),
                     SizedBox(height: Insets.sm),
                     GestureDetector(
                       onTap: () => widget.onDateSelect(false),
                       child: Container(
                         padding: EdgeInsets.all(Insets.md),
                         decoration: BoxDecoration(
-                          border: Border.all(color: AppColor.disabled),
+                          border: Border.all(
+                            color: Theme.of(
+                              context,
+                            ).colorScheme.outline.withOpacity(0.3),
+                          ),
                           borderRadius: BorderRadius.circular(12),
                         ),
                         child: Row(
                           children: [
                             Icon(
                               Iconsax.calendar,
-                              color: Theme.of(context).colorScheme.primary,
+                              color:
+                                  Theme.of(context).brightness ==
+                                          Brightness.dark
+                                      ? AppColor.accentGreen
+                                      : Theme.of(context).colorScheme.primary,
                               size: 20,
                             ),
                             SizedBox(width: Insets.sm),
                             Text(
                               '${widget.selectedEndDate.day}/${widget.selectedEndDate.month}/${widget.selectedEndDate.year}',
-                              style: ResponsiveText.body(context),
+                              style: ResponsiveText.body(context).copyWith(
+                                color: Theme.of(context).colorScheme.onSurface,
+                              ),
                             ),
                           ],
                         ),
@@ -308,7 +388,9 @@ class _MeterReadingSectionState extends State<MeterReadingSection> {
           // Previous Reading
           Text(
             'Previous Meter Reading (kWh)',
-            style: ResponsiveText.label(context),
+            style: ResponsiveText.label(
+              context,
+            ).copyWith(color: Theme.of(context).colorScheme.onSurface),
           ),
           SizedBox(height: Insets.sm),
           TextField(
@@ -319,17 +401,31 @@ class _MeterReadingSectionState extends State<MeterReadingSection> {
               hintText: 'Enter previous reading',
               prefixIcon: Icon(
                 Iconsax.document,
-                color: Theme.of(context).colorScheme.primary,
+                color:
+                    Theme.of(context).brightness == Brightness.dark
+                        ? AppColor.accentGreen
+                        : Theme.of(context).colorScheme.primary,
               ),
               counterText: '', // Hide counter
               border: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(12),
-                borderSide: BorderSide(color: AppColor.disabled),
+                borderSide: BorderSide(
+                  color: Theme.of(context).colorScheme.outline.withAlpha(77),
+                ),
+              ),
+              enabledBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(12),
+                borderSide: BorderSide(
+                  color: Theme.of(context).colorScheme.outline.withAlpha(77),
+                ),
               ),
               focusedBorder: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(12),
                 borderSide: BorderSide(
-                  color: Theme.of(context).colorScheme.primary,
+                  color:
+                      Theme.of(context).brightness == Brightness.dark
+                          ? AppColor.accentGreen
+                          : Theme.of(context).colorScheme.primary,
                   width: 2,
                 ),
               ),
@@ -340,7 +436,9 @@ class _MeterReadingSectionState extends State<MeterReadingSection> {
           // Present Reading
           Text(
             'Present Meter Reading (kWh)',
-            style: ResponsiveText.label(context),
+            style: ResponsiveText.label(
+              context,
+            ).copyWith(color: Theme.of(context).colorScheme.onSurface),
           ),
           SizedBox(height: Insets.sm),
           TextField(
@@ -351,17 +449,31 @@ class _MeterReadingSectionState extends State<MeterReadingSection> {
               hintText: 'Enter present reading',
               prefixIcon: Icon(
                 Iconsax.document,
-                color: Theme.of(context).colorScheme.primary,
+                color:
+                    Theme.of(context).brightness == Brightness.dark
+                        ? AppColor.accentGreen
+                        : Theme.of(context).colorScheme.primary,
               ),
               counterText: '', // Hide counter
               border: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(12),
-                borderSide: BorderSide(color: AppColor.disabled),
+                borderSide: BorderSide(
+                  color: Theme.of(context).colorScheme.outline.withAlpha(77),
+                ),
+              ),
+              enabledBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(12),
+                borderSide: BorderSide(
+                  color: Theme.of(context).colorScheme.outline.withAlpha(77),
+                ),
               ),
               focusedBorder: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(12),
                 borderSide: BorderSide(
-                  color: Theme.of(context).colorScheme.primary,
+                  color:
+                      Theme.of(context).brightness == Brightness.dark
+                          ? AppColor.accentGreen
+                          : Theme.of(context).colorScheme.primary,
                   width: 2,
                 ),
               ),
@@ -375,11 +487,14 @@ class _MeterReadingSectionState extends State<MeterReadingSection> {
               Expanded(
                 child: ElevatedButton.icon(
                   onPressed: widget.onCalculate,
-                  icon: Icon(Iconsax.calculator, color: Colors.white),
+                  icon: Icon(
+                    Iconsax.calculator,
+                    color: Theme.of(context).colorScheme.onPrimary,
+                  ),
                   label: Text(
                     'Calculate',
                     style: ResponsiveText.body(context).copyWith(
-                      color: Colors.white,
+                      color: Theme.of(context).colorScheme.onPrimary,
                       fontWeight: FontWeight.w600,
                     ),
                   ),
@@ -398,12 +513,18 @@ class _MeterReadingSectionState extends State<MeterReadingSection> {
                   onPressed: widget.onReset,
                   icon: Icon(
                     Iconsax.refresh,
-                    color: Theme.of(context).colorScheme.primary,
+                    color:
+                        Theme.of(context).brightness == Brightness.dark
+                            ? AppColor.accentGreen
+                            : Theme.of(context).colorScheme.primary,
                   ),
                   label: Text(
                     'Reset',
                     style: ResponsiveText.body(context).copyWith(
-                      color: Theme.of(context).colorScheme.primary,
+                      color:
+                          Theme.of(context).brightness == Brightness.dark
+                              ? AppColor.accentGreen
+                              : Theme.of(context).colorScheme.primary,
                       fontWeight: FontWeight.w600,
                     ),
                   ),
