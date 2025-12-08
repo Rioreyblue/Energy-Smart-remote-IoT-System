@@ -263,10 +263,6 @@ class _PredictiveConsumptionCardState extends State<PredictiveConsumptionCard> {
               ),
               SizedBox(height: Insets.lg),
 
-              // Data Source Indicator (improved, consolidated)
-              _buildDataSourceIndicator(context),
-              SizedBox(height: Insets.md),
-
               // Prediction Summary
               Builder(
                 builder: (context) {
@@ -307,235 +303,6 @@ class _PredictiveConsumptionCardState extends State<PredictiveConsumptionCard> {
     );
   }
 
-  Widget _buildDataSourceIndicator(BuildContext context) {
-    final cardColors = _PredictiveCardColors.fromContext(context);
-    final dataSourceType = _datasetService.dataSource;
-    final dataSourceInfo = _datasetService.getDataSourceInfo();
-    final isOnline = dataSourceInfo['isOnline'] as bool? ?? false;
-    final lastSyncTime = dataSourceInfo['lastSyncTime'] as DateTime?;
-    final datasetSize = _datasetService.datasetSize;
-
-    Color badgeColor;
-    IconData badgeIcon;
-    String badgeText;
-    String statusText;
-
-    switch (dataSourceType) {
-      case DataSourceType.cloud:
-        badgeColor = AppColor.accentGreen;
-        badgeIcon = Iconsax.cloud;
-        badgeText = 'Cloud Data';
-        statusText = 'Synced from Firestore';
-        break;
-      case DataSourceType.local:
-        badgeColor = AppColor.mediumConsumption;
-        badgeIcon = Iconsax.document_download;
-        badgeText = 'Local Data';
-        statusText = 'Offline backup';
-        break;
-      case DataSourceType.embedded:
-        badgeColor = AppColor.disabled;
-        badgeIcon = Iconsax.document;
-        badgeText = 'Default Data';
-        statusText = 'Sample dataset';
-        break;
-    }
-
-    return Container(
-      padding: EdgeInsets.all(Insets.md),
-      decoration: BoxDecoration(
-        color: cardColors.surfaceColor,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(
-          color: badgeColor.withAlpha((0.3 * 255).toInt()),
-          width: 1,
-        ),
-      ),
-      child: Row(
-        children: [
-          Container(
-            padding: EdgeInsets.all(8),
-            decoration: BoxDecoration(
-              color: badgeColor.withAlpha((0.2 * 255).toInt()),
-              borderRadius: BorderRadius.circular(10),
-            ),
-            child: Icon(badgeIcon, color: badgeColor, size: 20),
-          ),
-          SizedBox(width: Insets.md),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  children: [
-                    Text(
-                      badgeText,
-                      style: ResponsiveText.label(context).copyWith(
-                        color: cardColors.primaryTextColor,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                    SizedBox(width: Insets.sm),
-                    // Online/Offline indicator
-                    Container(
-                      width: 8,
-                      height: 8,
-                      decoration: BoxDecoration(
-                        color: isOnline ? AppColor.accentGreen : Colors.grey,
-                        shape: BoxShape.circle,
-                      ),
-                    ),
-                  ],
-                ),
-                SizedBox(height: 2),
-                Row(
-                  children: [
-                    Text(
-                      '$datasetSize records',
-                      style: ResponsiveText.body(context).copyWith(
-                        color: cardColors.primaryTextColor,
-                        fontWeight: FontWeight.bold,
-                        fontSize: 13,
-                      ),
-                    ),
-                    SizedBox(width: Insets.sm),
-                    Text(
-                      '•',
-                      style: ResponsiveText.caption(
-                        context,
-                      ).copyWith(color: cardColors.secondaryTextColor),
-                    ),
-                    SizedBox(width: Insets.sm),
-                    Expanded(
-                      child: Text(
-                        statusText,
-                        style: ResponsiveText.caption(context).copyWith(
-                          color: cardColors.secondaryTextColor,
-                          fontSize: 11,
-                        ),
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    ),
-                  ],
-                ),
-                if (lastSyncTime != null) ...[
-                  SizedBox(height: 2),
-                  Text(
-                    'Updated ${_formatDate(lastSyncTime)}',
-                    style: ResponsiveText.caption(context).copyWith(
-                      color: cardColors.tertiaryTextColor,
-                      fontSize: 10,
-                    ),
-                  ),
-                ],
-              ],
-            ),
-          ),
-          if (dataSourceType != DataSourceType.cloud)
-            _datasetService.isLoading || _isGeneratingPrediction
-                ? SizedBox(
-                  width: 20,
-                  height: 20,
-                  child: CircularProgressIndicator(
-                    strokeWidth: 2,
-                    valueColor: AlwaysStoppedAnimation<Color>(
-                      cardColors.iconColor,
-                    ),
-                  ),
-                )
-                : IconButton(
-                  icon: Icon(
-                    Iconsax.refresh,
-                    color: cardColors.iconColor,
-                    size: 20,
-                  ),
-                  onPressed: _onSyncPressed,
-                  tooltip:
-                      dataSourceType == DataSourceType.embedded
-                          ? 'Refresh Prediction'
-                          : isOnline
-                          ? 'Sync from Cloud'
-                          : 'Offline - Cannot sync',
-                  padding: EdgeInsets.zero,
-                  constraints: BoxConstraints(),
-                ),
-        ],
-      ),
-    );
-  }
-
-  Future<void> _onSyncPressed() async {
-    if (_datasetService.isLoading) return;
-
-    final dataSourceType = _datasetService.dataSource;
-
-    // If using Embedded data source, just refresh prediction without connectivity check
-    if (dataSourceType == DataSourceType.embedded) {
-      setState(() {
-        _isGeneratingPrediction = true;
-      });
-
-      try {
-        // Just regenerate prediction from embedded dataset
-        await _generatePrediction();
-      } catch (e) {
-        if (mounted) {
-          showErrorSnackBar(context, 'Failed to refresh prediction: $e');
-        }
-      } finally {
-        if (mounted) {
-          setState(() {
-            _isGeneratingPrediction = false;
-          });
-        }
-      }
-      return;
-    }
-
-    // For Local or Cloud data sources, check connectivity before syncing
-    setState(() {
-      _isGeneratingPrediction = true;
-    });
-
-    try {
-      // Refresh connectivity status before checking
-      await _datasetService.refreshConnectivity();
-      final isOnline = _datasetService.isOnline;
-
-      if (!isOnline) {
-        if (mounted) {
-          showErrorSnackBar(
-            context,
-            'Cannot sync: Device is offline. Please check your internet connection.',
-          );
-        }
-        return;
-      }
-
-      // Proceed with cloud sync
-      final success = await _datasetService.syncFromCloud();
-      if (success && mounted) {
-        // Regenerate prediction with new dataset
-        await _generatePrediction();
-      } else if (mounted) {
-        showErrorSnackBar(
-          context,
-          'Failed to sync from cloud. Please try again later.',
-        );
-      }
-    } catch (e) {
-      if (mounted) {
-        showErrorSnackBar(context, 'Sync failed: ${e.toString()}');
-      }
-    } finally {
-      if (mounted) {
-        setState(() {
-          _isGeneratingPrediction = false;
-        });
-      }
-    }
-  }
-
   Widget _buildPredictionSummary(
     BuildContext context,
     PredictionResultModel prediction,
@@ -554,9 +321,10 @@ class _PredictiveConsumptionCardState extends State<PredictiveConsumptionCard> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Predicted Consumption with Classification Badge
+          // Main Prediction Value - More Prominent
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Expanded(
                 child: Column(
@@ -564,174 +332,100 @@ class _PredictiveConsumptionCardState extends State<PredictiveConsumptionCard> {
                   children: [
                     Text(
                       _getPeriodPredictionLabel(widget.period),
-                      style: ResponsiveText.label(
-                        context,
-                      ).copyWith(color: cardColors.secondaryTextColor),
+                      style: ResponsiveText.label(context).copyWith(
+                        color: cardColors.secondaryTextColor,
+                        fontSize: ResponsiveText.label(context).fontSize! * 0.9,
+                      ),
                     ),
-                    SizedBox(height: 2),
+                    SizedBox(height: Insets.xm),
                     Text(
-                      _getPeriodExplanation(widget.period),
-                      style: ResponsiveText.caption(context).copyWith(
-                        color: cardColors.tertiaryTextColor,
-                        fontSize: 10,
+                      prediction.formattedPredictedKwh,
+                      style: ResponsiveText.headline(context).copyWith(
+                        color: cardColors.primaryTextColor,
+                        fontWeight: FontWeight.bold,
                       ),
                     ),
                   ],
                 ),
               ),
-              Row(
-                children: [
-                  Text(
-                    prediction.formattedPredictedKwh,
-                    style: ResponsiveText.stat(context).copyWith(
+              // Classification Badge
+              Container(
+                padding: EdgeInsets.symmetric(
+                  horizontal: Insets.sm,
+                  vertical: 6,
+                ),
+                decoration: BoxDecoration(
+                  color: prediction.consumptionLevelColor.withAlpha(
+                    (0.9 * 255).toInt(),
+                  ),
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(color: cardColors.borderColor, width: 1),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(
+                      prediction.consumptionLevelIcon,
+                      size: 16,
                       color: cardColors.primaryTextColor,
-                      fontWeight: FontWeight.bold,
                     ),
-                  ),
-                  SizedBox(width: Insets.sm),
-                  // Classification Badge
-                  Container(
-                    padding: EdgeInsets.symmetric(
-                      horizontal: Insets.sm,
-                      vertical: 4,
-                    ),
-                    decoration: BoxDecoration(
-                      color: prediction.consumptionLevelColor.withAlpha(
-                        (0.9 * 255).toInt(),
-                      ),
-                      borderRadius: BorderRadius.circular(8),
-                      border: Border.all(
-                        color: cardColors.borderColor,
-                        width: 1,
+                    SizedBox(width: 4),
+                    Text(
+                      prediction.consumptionLevel.toUpperCase(),
+                      style: ResponsiveText.small(context).copyWith(
+                        color: cardColors.primaryTextColor,
+                        fontWeight: FontWeight.bold,
                       ),
                     ),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Icon(
-                          prediction.consumptionLevelIcon,
-                          size: 14,
-                          color: cardColors.primaryTextColor,
-                        ),
-                        SizedBox(width: 4),
-                        Text(
-                          prediction.consumptionLevel.toUpperCase(),
-                          style: ResponsiveText.caption(context).copyWith(
-                            color: cardColors.primaryTextColor,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
+                  ],
+                ),
               ),
             ],
           ),
-          SizedBox(height: Insets.xm),
-          // Classification explanation - more user-friendly
-          Container(
-            padding: EdgeInsets.all(Insets.sm),
-            decoration: BoxDecoration(
-              color: cardColors.backgroundColor.withAlpha((0.1 * 255).toInt()),
-              borderRadius: BorderRadius.circular(8),
-            ),
-            child: Row(
-              children: [
-                Icon(
-                  Iconsax.info_circle,
-                  color: cardColors.secondaryTextColor,
-                  size: 14,
-                ),
-                SizedBox(width: Insets.xm),
-                Expanded(
-                  child: Text(
-                    _getPeriodHelpText(widget.period),
-                    style: ResponsiveText.caption(context).copyWith(
-                      color: cardColors.secondaryTextColor,
-                      fontSize: 10,
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
-          SizedBox(height: Insets.sm),
+          SizedBox(height: Insets.md),
 
-          // Cost Range - clearer label
+          // Expected Cost - Simplified
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    'Expected Cost',
-                    style: ResponsiveText.label(
-                      context,
-                    ).copyWith(color: cardColors.secondaryTextColor),
-                  ),
-                  SizedBox(height: 2),
-                  Text(
-                    'Estimate based on current rates',
-                    style: ResponsiveText.caption(context).copyWith(
-                      color: cardColors.tertiaryTextColor,
-                      fontSize: 9,
-                    ),
-                  ),
-                ],
+              Text(
+                'Expected Cost',
+                style: ResponsiveText.body(
+                  context,
+                ).copyWith(color: cardColors.secondaryTextColor),
               ),
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.end,
-                children: [
-                  Text(
-                    '₱${costForecast['minCost']!.toStringAsFixed(2)} - ₱${costForecast['maxCost']!.toStringAsFixed(2)}',
-                    style: ResponsiveText.stat(context).copyWith(
-                      color: cardColors.primaryTextColor,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                  SizedBox(height: 2),
-                  Text(
-                    'Range estimate',
-                    style: ResponsiveText.caption(context).copyWith(
-                      color: cardColors.tertiaryTextColor,
-                      fontSize: 9,
-                    ),
-                  ),
-                ],
+              Text(
+                '₱${costForecast['minCost']!.toStringAsFixed(2)} - ₱${costForecast['maxCost']!.toStringAsFixed(2)}',
+                style: ResponsiveText.stat(context).copyWith(
+                  color: cardColors.primaryTextColor,
+                  fontWeight: FontWeight.bold,
+                ),
               ),
             ],
           ),
-          SizedBox(height: Insets.sm),
+          SizedBox(height: Insets.md),
 
           // Appliance Cost Analysis Section
           if (prediction.applianceCostBreakdown != null &&
               prediction.applianceCostBreakdown!.isNotEmpty) ...[
-            SizedBox(height: Insets.md),
-            Builder(
-              builder: (context) {
-                final cardColors = _PredictiveCardColors.fromContext(context);
-                return Divider(color: cardColors.borderColor, thickness: 1);
-              },
-            ),
+            Divider(color: cardColors.borderColor, thickness: 1),
             SizedBox(height: Insets.sm),
             _buildApplianceCostAnalysis(context, prediction),
           ],
 
-          // Confidence
+          // Confidence - Simplified
           SizedBox(height: Insets.sm),
           Row(
             children: [
               Icon(
                 Iconsax.shield_tick,
                 color: cardColors.secondaryTextColor,
-                size: 16,
+                size: 14,
               ),
               SizedBox(width: Insets.xm),
               Text(
                 'Confidence: ${prediction.formattedConfidence}',
-                style: ResponsiveText.caption(
+                style: ResponsiveText.small(
                   context,
                 ).copyWith(color: cardColors.secondaryTextColor),
               ),
@@ -753,26 +447,16 @@ class _PredictiveConsumptionCardState extends State<PredictiveConsumptionCard> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        // Section Title
+        // Section Title - Simplified
         Builder(
           builder: (context) {
             final cardColors = _PredictiveCardColors.fromContext(context);
-            return Row(
-              children: [
-                Icon(
-                  Iconsax.info_circle,
-                  color: cardColors.secondaryTextColor,
-                  size: 16,
-                ),
-                SizedBox(width: Insets.xm),
-                Text(
-                  'Appliance Cost Analysis',
-                  style: ResponsiveText.label(context).copyWith(
-                    color: cardColors.primaryTextColor,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-              ],
+            return Text(
+              'Top Appliances',
+              style: ResponsiveText.body(context).copyWith(
+                color: cardColors.primaryTextColor,
+                fontWeight: FontWeight.w600,
+              ),
             );
           },
         ),
@@ -825,15 +509,15 @@ class _PredictiveConsumptionCardState extends State<PredictiveConsumptionCard> {
   }) {
     final cardColors = _PredictiveCardColors.fromContext(context);
     return Container(
-      padding: EdgeInsets.all(Insets.sm),
+      padding: EdgeInsets.symmetric(horizontal: Insets.sm, vertical: Insets.xm),
       decoration: BoxDecoration(
         color: cardColors.backgroundColor.withAlpha((0.1 * 255).toInt()),
         borderRadius: BorderRadius.circular(8),
         border: Border.all(
           color:
               isHighCost
-                  ? AppColor.accentRed.withAlpha((0.5 * 255).toInt())
-                  : AppColor.accentGreen.withAlpha((0.5 * 255).toInt()),
+                  ? AppColor.accentRed.withAlpha((0.3 * 255).toInt())
+                  : AppColor.accentGreen.withAlpha((0.3 * 255).toInt()),
           width: 1,
         ),
       ),
@@ -845,14 +529,6 @@ class _PredictiveConsumptionCardState extends State<PredictiveConsumptionCard> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  label,
-                  style: ResponsiveText.caption(context).copyWith(
-                    color: cardColors.secondaryTextColor,
-                    fontSize: 10,
-                  ),
-                ),
-                SizedBox(height: 2),
-                Text(
                   _formatApplianceName(appliance),
                   style: ResponsiveText.body(context).copyWith(
                     color: cardColors.primaryTextColor,
@@ -863,36 +539,20 @@ class _PredictiveConsumptionCardState extends State<PredictiveConsumptionCard> {
                   SizedBox(height: 2),
                   Text(
                     '${kwh.toStringAsFixed(2)} kWh',
-                    style: ResponsiveText.caption(context).copyWith(
-                      color: cardColors.tertiaryTextColor,
-                      fontSize: 10,
-                    ),
+                    style: ResponsiveText.small(
+                      context,
+                    ).copyWith(color: cardColors.secondaryTextColor),
                   ),
                 ],
               ],
             ),
           ),
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.end,
-            children: [
-              Text(
-                '₱${cost.toStringAsFixed(2)}',
-                style: ResponsiveText.body(context).copyWith(
-                  color: isHighCost ? AppColor.accentRed : AppColor.accentGreen,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-              if (percentage != null) ...[
-                SizedBox(height: 2),
-                Text(
-                  '${percentage.toStringAsFixed(1)}%',
-                  style: ResponsiveText.caption(context).copyWith(
-                    color: cardColors.secondaryTextColor,
-                    fontSize: 10,
-                  ),
-                ),
-              ],
-            ],
+          Text(
+            '₱${cost.toStringAsFixed(2)}',
+            style: ResponsiveText.body(context).copyWith(
+              color: isHighCost ? AppColor.accentRed : AppColor.accentGreen,
+              fontWeight: FontWeight.bold,
+            ),
           ),
         ],
       ),
@@ -931,21 +591,6 @@ class _PredictiveConsumptionCardState extends State<PredictiveConsumptionCard> {
         .join(' ');
   }
 
-  String _formatDate(DateTime date) {
-    final now = DateTime.now();
-    final difference = now.difference(date);
-
-    if (difference.inDays == 0) {
-      return 'today';
-    } else if (difference.inDays == 1) {
-      return 'yesterday';
-    } else if (difference.inDays < 7) {
-      return '${difference.inDays} days ago';
-    } else {
-      return '${date.day}/${date.month}/${date.year}';
-    }
-  }
-
   /// Get user-friendly period description
   String _getPeriodDescription(String period) {
     switch (period.toLowerCase()) {
@@ -969,32 +614,6 @@ class _PredictiveConsumptionCardState extends State<PredictiveConsumptionCard> {
       case 'month':
       default:
         return 'Predicted Next Month';
-    }
-  }
-
-  /// Get explanation text for the period
-  String _getPeriodExplanation(String period) {
-    switch (period.toLowerCase()) {
-      case 'day':
-        return 'Based on your daily usage patterns';
-      case 'week':
-        return 'Based on your weekly usage patterns';
-      case 'month':
-      default:
-        return 'Based on your monthly usage history';
-    }
-  }
-
-  /// Get help text explaining the prediction
-  String _getPeriodHelpText(String period) {
-    switch (period.toLowerCase()) {
-      case 'day':
-        return 'This prediction estimates tomorrow\'s energy consumption based on your historical daily patterns, helping you plan ahead.';
-      case 'week':
-        return 'This prediction estimates next week\'s energy consumption based on your historical weekly patterns, helping you manage your energy budget.';
-      case 'month':
-      default:
-        return 'This prediction estimates next month\'s consumption using your historical data, industry benchmarks, and current usage patterns.';
     }
   }
 }
@@ -1041,11 +660,10 @@ class _ExpandableApplianceBreakdownState
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
                 Text(
-                  'All Appliances Breakdown',
-                  style: ResponsiveText.label(context).copyWith(
-                    color: cardColors.secondaryTextColor,
-                    fontSize: 11,
-                  ),
+                  'View All Appliances',
+                  style: ResponsiveText.body(
+                    context,
+                  ).copyWith(color: cardColors.secondaryTextColor),
                 ),
                 Icon(
                   _isExpanded ? Iconsax.arrow_up_2 : Iconsax.arrow_down_2,
