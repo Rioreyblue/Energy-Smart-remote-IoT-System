@@ -317,6 +317,7 @@ class NotificationService {
           body: body,
           payload: payload?.map((k, v) => MapEntry(k, v.toString())),
           category: NotificationCategory.Status,
+          largeIcon: 'resource://drawable/app_logo_wbg',
         ),
       );
     } catch (e) {
@@ -363,6 +364,7 @@ class NotificationService {
             'chatId': chatId,
             if (messageId != null) 'messageId': messageId,
           },
+          largeIcon: 'resource://drawable/app_logo_wbg',
         ),
       );
     } catch (e) {
@@ -403,6 +405,7 @@ class NotificationService {
             'oldRate': oldRate.toString(),
             'newRate': newRate.toString(),
           },
+          largeIcon: 'resource://drawable/app_logo_wbg',
         ),
       );
       AppLogger.i(
@@ -512,6 +515,7 @@ class NotificationService {
           title: 'Daily Energy Summary',
           body: 'Check your energy usage for today',
           category: NotificationCategory.Reminder,
+          largeIcon: 'resource://drawable/app_logo_wbg',
         ),
         schedule: NotificationCalendar(
           hour: 21,

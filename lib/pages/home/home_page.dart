@@ -29,7 +29,9 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
   final SceneService _sceneService = SceneService();
   String _activeScene = '';
   bool _isExecutingScene = false;
+  bool _isRefreshing = false;
   late AnimationController _sceneAnimationController;
+  late AnimationController _refreshAnimationController;
   late Animation<double> _sceneAnimation;
 
   @override
@@ -37,6 +39,10 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
     super.initState();
     _sceneAnimationController = AnimationController(
       duration: const Duration(milliseconds: 300),
+      vsync: this,
+    );
+    _refreshAnimationController = AnimationController(
+      duration: const Duration(milliseconds: 1000),
       vsync: this,
     );
     _sceneAnimation = Tween<double>(begin: 0.0, end: 1.0).animate(
@@ -70,7 +76,40 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
   @override
   void dispose() {
     _sceneAnimationController.dispose();
+    _refreshAnimationController.dispose();
     super.dispose();
+  }
+
+  Future<void> _refreshAllSections() async {
+    if (_isRefreshing) return;
+
+    setState(() {
+      _isRefreshing = true;
+    });
+
+    // Start rotation animation
+    _refreshAnimationController.repeat();
+
+    try {
+      // Refresh all controllers in parallel
+      await Future.wait([
+        context.read<HomeController>().refresh(),
+        context.read<EnergyDashboardController>().refresh(),
+        context.read<BudgetController>().init(),
+      ]);
+    } catch (e) {
+      debugPrint('Error refreshing sections: $e');
+    } finally {
+      // Stop animation
+      _refreshAnimationController.stop();
+      _refreshAnimationController.reset();
+
+      if (mounted) {
+        setState(() {
+          _isRefreshing = false;
+        });
+      }
+    }
   }
 
   double _responsiveFontSize(BuildContext context, double base) {
@@ -231,7 +270,11 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const _HeaderSection(),
+            _HeaderSection(
+              onRefresh: _refreshAllSections,
+              isRefreshing: _isRefreshing,
+              refreshAnimation: _refreshAnimationController,
+            ),
             SizedBox(height: Insets.lg),
             OptimizedEnergyOverviewCard(
               responsiveFontSize: _responsiveFontSize,
@@ -263,7 +306,15 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
 }
 
 class _HeaderSection extends StatelessWidget {
-  const _HeaderSection();
+  final VoidCallback? onRefresh;
+  final bool isRefreshing;
+  final AnimationController refreshAnimation;
+
+  const _HeaderSection({
+    this.onRefresh,
+    required this.isRefreshing,
+    required this.refreshAnimation,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -272,6 +323,9 @@ class _HeaderSection extends StatelessWidget {
         final width = MediaQuery.of(context).size.width;
         return base * (width / 375.0).clamp(0.85, 1.2);
       },
+      onRefresh: onRefresh,
+      isRefreshing: isRefreshing,
+      refreshAnimation: refreshAnimation,
     );
   }
 }
@@ -449,7 +503,7 @@ class _SceneEmptyWidget extends StatelessWidget {
         borderRadius: BorderRadius.circular(Insets.lg),
       ),
       child: Center(
-        child: Column(  
+        child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
             Icon(

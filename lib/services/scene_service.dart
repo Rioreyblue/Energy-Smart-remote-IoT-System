@@ -76,7 +76,7 @@ class SceneService {
         ),
         'createdAt': FieldValue.serverTimestamp(),
         'updatedAt': FieldValue.serverTimestamp(),
-        'isDefault': false,
+        'isDefault': scene.isDefault,
       });
       return docRef.id;
     } catch (e) {
@@ -309,9 +309,44 @@ class SceneService {
   /// Initialize default scenes for new users
   Future<void> initializeDefaultScenes() async {
     try {
-      // Check if user already has scenes
+      // Get existing scenes
       final existingScenes = await getScenes();
-      if (existingScenes.isNotEmpty) return;
+
+      // Remove duplicate scenes by name (keep only the first occurrence)
+      final seenNames = <String>{};
+      final duplicatesToDelete = <String>[];
+
+      for (final scene in existingScenes) {
+        if (seenNames.contains(scene.name)) {
+          duplicatesToDelete.add(scene.id);
+        } else {
+          seenNames.add(scene.name);
+        }
+      }
+
+      // Delete duplicate scenes
+      for (final sceneId in duplicatesToDelete) {
+        try {
+          await deleteScene(sceneId);
+          AppLogger.d('[SceneService] Deleted duplicate scene: $sceneId');
+        } catch (e) {
+          AppLogger.w('[SceneService] Error deleting duplicate scene: $e');
+        }
+      }
+
+      // Check if default scenes already exist by name
+      final existingNames = existingScenes.map((s) => s.name).toSet();
+      final defaultSceneNames = {
+        'Home Mode',
+        'Away Mode',
+        'Sleep Mode',
+        'Eco Mode',
+      };
+
+      // Only create scenes that don't exist
+      if (existingNames.containsAll(defaultSceneNames)) {
+        return; // All default scenes already exist
+      }
 
       final defaultScenes = [
         SceneModel(
@@ -343,9 +378,9 @@ class SceneService {
           name: 'Sleep Mode',
           icon: 'Iconsax.moon',
           deviceStates: {
-            'appliances_001': const DeviceState(isOn: true, value: 0.5),
+            'appliances_001': const DeviceState(isOn: true, value: 0.3),
             'appliances_002': const DeviceState(isOn: false),
-            'appliances_003': const DeviceState(isOn: true, value: 0.5),
+            'appliances_003': const DeviceState(isOn: false),
             'appliances_004': const DeviceState(isOn: false),
           },
           isDefault: true,
@@ -364,9 +399,36 @@ class SceneService {
         ),
       ];
 
-      // Create default scenes
+      // Create only scenes that don't exist
       for (final scene in defaultScenes) {
-        await createScene(scene);
+        if (!existingNames.contains(scene.name)) {
+          await createScene(scene);
+        } else {
+          // Update existing scene if it has duplicate/incorrect values
+          final existingScene = existingScenes.firstWhere(
+            (s) => s.name == scene.name,
+          );
+
+          // Check if device states are different (for Sleep Mode and Eco Mode)
+          if (scene.name == 'Sleep Mode' || scene.name == 'Eco Mode') {
+            final statesMatch =
+                scene.deviceStates.length ==
+                    existingScene.deviceStates.length &&
+                scene.deviceStates.entries.every((entry) {
+                  final existingState = existingScene.deviceStates[entry.key];
+                  return existingState?.isOn == entry.value.isOn &&
+                      existingState?.value == entry.value.value;
+                });
+
+            if (!statesMatch) {
+              // Update the scene with correct values
+              await updateScene(existingScene.id, scene);
+              AppLogger.d(
+                '[SceneService] Updated ${scene.name} with correct values',
+              );
+            }
+          }
+        }
       }
     } catch (e) {
       AppLogger.i('[SceneService] Error initializing default scenes: $e');

@@ -422,22 +422,15 @@ class HomeController extends ChangeNotifier {
             }
           }
 
-          // Add activity log and send notification in parallel
-          await Future.wait([
-            _activityService.addApplianceActivity(
-              applianceName: updatedAppliance.name,
-              isOn: isOn,
-              applianceId: applianceId,
-              applianceIcon: updatedAppliance.icon,
-              cost: updatedAppliance.calculateCost(_currentRate),
-              kwh: updatedAppliance.kwh,
-            ),
-            _notificationService.sendApplianceStatusNotification(
-              applianceName: updatedAppliance.name,
-              isOn: isOn,
-              cost: updatedAppliance.calculateCost(_currentRate),
-            ),
-          ]);
+          // Add activity log (notifications removed)
+          await _activityService.addApplianceActivity(
+            applianceName: updatedAppliance.name,
+            isOn: isOn,
+            applianceId: applianceId,
+            applianceIcon: updatedAppliance.icon,
+            cost: updatedAppliance.calculateCost(_currentRate),
+            kwh: updatedAppliance.kwh,
+          );
 
           // Reload data (streams will update automatically, but ensure consistency)
           await Future.wait([_loadTodayUsageData(), _loadRecentActivities()]);
@@ -545,6 +538,7 @@ class HomeController extends ChangeNotifier {
       // Load data in parallel for better performance
       await Future.wait([
         _loadAppliances(),
+        _loadApplianceAliases(),
         _loadEnergyOverviewData(),
         _loadTodayUsageData(),
         _loadRecentActivities(),

@@ -133,6 +133,7 @@ class ThresholdAlertService {
         customSound: 'resource://raw/alert_tone',
         displayOnForeground: true,
         displayOnBackground: true,
+        largeIcon: 'resource://drawable/app_logo_wbg',
         payload: {
           'type': 'threshold_alert',
           'threshold': thresholdPercentage.toStringAsFixed(1),
