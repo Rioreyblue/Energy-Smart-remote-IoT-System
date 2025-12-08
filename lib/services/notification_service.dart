@@ -51,7 +51,7 @@ class NotificationService {
 
   /// Initialize Awesome Notifications for local non-critical alerts
   Future<void> _initializeLocalNotifications() async {
-    await AwesomeNotifications().initialize(null, [
+    await AwesomeNotifications().initialize('resource://drawable/update_icon', [
       NotificationChannel(
         channelKey: 'appliance_status',
         channelName: 'Appliance Status',
@@ -317,7 +317,8 @@ class NotificationService {
           body: body,
           payload: payload?.map((k, v) => MapEntry(k, v.toString())),
           category: NotificationCategory.Status,
-          largeIcon: 'resource://drawable/app_logo_wbg',
+          icon: 'resource://drawable/update_icon',
+          largeIcon: 'resource://drawable/update_icon',
         ),
       );
     } catch (e) {
@@ -364,7 +365,8 @@ class NotificationService {
             'chatId': chatId,
             if (messageId != null) 'messageId': messageId,
           },
-          largeIcon: 'resource://drawable/app_logo_wbg',
+          icon: 'resource://drawable/update_icon',
+          largeIcon: 'resource://drawable/update_icon',
         ),
       );
     } catch (e) {
@@ -405,7 +407,8 @@ class NotificationService {
             'oldRate': oldRate.toString(),
             'newRate': newRate.toString(),
           },
-          largeIcon: 'resource://drawable/app_logo_wbg',
+          icon: 'resource://drawable/update_icon',
+          largeIcon: 'resource://drawable/update_icon',
         ),
       );
       AppLogger.i(
@@ -515,7 +518,8 @@ class NotificationService {
           title: 'Daily Energy Summary',
           body: 'Check your energy usage for today',
           category: NotificationCategory.Reminder,
-          largeIcon: 'resource://drawable/app_logo_wbg',
+          icon: 'resource://drawable/update_icon',
+          largeIcon: 'resource://drawable/update_icon',
         ),
         schedule: NotificationCalendar(
           hour: 21,

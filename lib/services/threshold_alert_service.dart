@@ -67,7 +67,11 @@ class ThresholdAlertService {
     try {
       await AwesomeNotifications().setChannel(channel);
     } on PlatformException {
-      await AwesomeNotifications().initialize(null, [channel], debug: false);
+      await AwesomeNotifications().initialize(
+        'resource://drawable/update_icon',
+        [channel],
+        debug: false,
+      );
     } finally {
       _channelReady = true;
     }
@@ -133,7 +137,8 @@ class ThresholdAlertService {
         customSound: 'resource://raw/alert_tone',
         displayOnForeground: true,
         displayOnBackground: true,
-        largeIcon: 'resource://drawable/app_logo_wbg',
+        icon: 'resource://drawable/update_icon',
+        largeIcon: 'resource://drawable/update_icon',
         payload: {
           'type': 'threshold_alert',
           'threshold': thresholdPercentage.toStringAsFixed(1),
