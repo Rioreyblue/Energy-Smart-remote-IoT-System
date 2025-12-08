@@ -384,12 +384,12 @@ class _PredictiveConsumptionCardState extends State<PredictiveConsumptionCard> {
           ),
           SizedBox(height: Insets.md),
 
-          // Expected Cost - Simplified
+          // Expected Bill - Simplified
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
               Text(
-                'Expected Cost',
+                'Expected Bill',
                 style: ResponsiveText.body(
                   context,
                 ).copyWith(color: cardColors.secondaryTextColor),
