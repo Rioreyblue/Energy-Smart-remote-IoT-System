@@ -106,7 +106,7 @@ class _MonitoringChartCardState extends State<MonitoringChartCard>
   int _selectedDayNumber = DateTime.now().day;
   String? _selectedWeekMonthKey;
   String? _selectedWeekKey;
-  String? _selectedMonthKey;
+  String? _selectedMonthKey; // Can be "all" or a month key like "2025-01"
 
   @override
   bool get wantKeepAlive => true; // Preserve widget state across navigation
@@ -132,7 +132,7 @@ class _MonitoringChartCardState extends State<MonitoringChartCard>
     );
     _selectedWeekMonthKey =
         '${_selectedDailyMonth.year}-${_selectedDailyMonth.month.toString().padLeft(2, '0')}';
-    _selectedMonthKey = _selectedWeekMonthKey;
+    _selectedMonthKey = 'all'; // Default to showing all months
   }
 
   @override
@@ -270,119 +270,119 @@ class _MonitoringChartCardState extends State<MonitoringChartCard>
               ),
             SizedBox(height: Insets.md),
             SizedBox(
-          height: 200,
-          child: LineChart(
-            LineChartData(
-              minY: 0,
-              maxY: maxY,
-              gridData: FlGridData(
-                show: true,
-                horizontalInterval: maxY / 5,
-                getDrawingHorizontalLine:
+              height: 200,
+              child: LineChart(
+                LineChartData(
+                  minY: 0,
+                  maxY: maxY,
+                  gridData: FlGridData(
+                    show: true,
+                    horizontalInterval: maxY / 5,
+                    getDrawingHorizontalLine:
                         (value) => FlLine(
                           color: chartColors.horizontalLineColor,
                           strokeWidth: 1,
                         ),
-              ),
-              titlesData: FlTitlesData(
-                bottomTitles: AxisTitles(
-                  sideTitles: SideTitles(
-                    showTitles: true,
-                    interval: 1,
-                    getTitlesWidget: (value, _) {
-                      final idx = value.toInt();
+                  ),
+                  titlesData: FlTitlesData(
+                    bottomTitles: AxisTitles(
+                      sideTitles: SideTitles(
+                        showTitles: true,
+                        interval: 1,
+                        getTitlesWidget: (value, _) {
+                          final idx = value.toInt();
                           if (idx >= 0 && idx < chartData.length) {
                             final dateStr = chartData[idx]['date'] as String?;
-                        if (dateStr != null) {
-                          try {
-                            final date = DateTime.parse(dateStr);
-                            return Padding(
-                              padding: const EdgeInsets.only(top: 8),
-                              child: Text(
-                                DateFormat('M/d').format(date),
-                                style: ResponsiveText.caption(context),
-                              ),
-                            );
-                          } catch (e) {
-                            return Text(
-                              '',
-                              style: ResponsiveText.caption(context),
-                            );
+                            if (dateStr != null) {
+                              try {
+                                final date = DateTime.parse(dateStr);
+                                return Padding(
+                                  padding: const EdgeInsets.only(top: 8),
+                                  child: Text(
+                                    DateFormat('M/d').format(date),
+                                    style: ResponsiveText.caption(context),
+                                  ),
+                                );
+                              } catch (e) {
+                                return Text(
+                                  '',
+                                  style: ResponsiveText.caption(context),
+                                );
+                              }
+                            }
                           }
-                        }
-                      }
                           return Text(
                             '',
                             style: ResponsiveText.caption(context),
                           );
-                    },
+                        },
+                      ),
+                    ),
+                    leftTitles: AxisTitles(
+                      sideTitles: SideTitles(
+                        showTitles: true,
+                        interval: maxY / 5,
+                        reservedSize: 40,
+                        getTitlesWidget: (value, _) {
+                          if (useCost) {
+                            return Text(
+                              '₱${value.toStringAsFixed(0)}',
+                              style: ResponsiveText.caption(context),
+                            );
+                          }
+                          return Text(
+                            value.toStringAsFixed(1),
+                            style: ResponsiveText.caption(context),
+                          );
+                        },
+                      ),
+                    ),
+                    topTitles: const AxisTitles(
+                      sideTitles: SideTitles(showTitles: false),
+                    ),
+                    rightTitles: const AxisTitles(
+                      sideTitles: SideTitles(showTitles: false),
+                    ),
                   ),
-                ),
-                leftTitles: AxisTitles(
-                  sideTitles: SideTitles(
-                    showTitles: true,
-                    interval: maxY / 5,
-                    reservedSize: 40,
-                    getTitlesWidget: (value, _) {
-                      if (useCost) {
-                        return Text(
-                          '₱${value.toStringAsFixed(0)}',
-                          style: ResponsiveText.caption(context),
-                        );
-                      }
-                      return Text(
-                        value.toStringAsFixed(1),
-                        style: ResponsiveText.caption(context),
-                      );
-                    },
-                  ),
-                ),
-                topTitles: const AxisTitles(
-                  sideTitles: SideTitles(showTitles: false),
-                ),
-                rightTitles: const AxisTitles(
-                  sideTitles: SideTitles(showTitles: false),
-                ),
-              ),
-              borderData: FlBorderData(show: false),
-              lineBarsData: [
-                LineChartBarData(
-                  spots: spots,
-                  isCurved: true,
+                  borderData: FlBorderData(show: false),
+                  lineBarsData: [
+                    LineChartBarData(
+                      spots: spots,
+                      isCurved: true,
                       color: chartColors.primaryColor,
-                  barWidth: 3,
-                  belowBarData: BarAreaData(
-                    show: true,
+                      barWidth: 3,
+                      belowBarData: BarAreaData(
+                        show: true,
                         color: chartColors.areaGradientColor,
-                  ),
-                  dotData: FlDotData(
-                    show: true,
-                    getDotPainter: (spot, percent, barData, index) {
-                      return FlDotCirclePainter(
-                        radius: 4,
+                      ),
+                      dotData: FlDotData(
+                        show: true,
+                        getDotPainter: (spot, percent, barData, index) {
+                          return FlDotCirclePainter(
+                            radius: 4,
                             color: chartColors.dotColor,
-                        strokeWidth: 2,
+                            strokeWidth: 2,
                             strokeColor: chartColors.dotStrokeColor,
-                      );
-                    },
-                  ),
-                ),
-              ],
-              lineTouchData: LineTouchData(
-                enabled: true,
-                touchTooltipData: LineTouchTooltipData(
+                          );
+                        },
+                      ),
+                    ),
+                  ],
+                  lineTouchData: LineTouchData(
+                    enabled: true,
+                    touchTooltipData: LineTouchTooltipData(
                       getTooltipColor:
                           (spots) => chartColors.tooltipBackgroundColor,
-                  getTooltipItems:
-                      (touchedSpots) =>
-                          touchedSpots.map((spot) {
-                            final idx = spot.x.toInt();
+                      getTooltipItems:
+                          (touchedSpots) =>
+                              touchedSpots.map((spot) {
+                                final idx = spot.x.toInt();
                                 if (idx >= 0 && idx < chartData.length) {
                                   final kwh = chartData[idx]['totalKwh'] ?? 0.0;
                                   final cost =
                                       chartData[idx]['totalCost'] ?? 0.0;
-                            return LineTooltipItem(
-                              '${kwh.toStringAsFixed(2)} kWh\n₱${cost.toStringAsFixed(2)}',
+                                  return LineTooltipItem(
+                                    '${kwh.toStringAsFixed(2)} kWh\n₱${cost.toStringAsFixed(2)}',
                                     ResponsiveText.body(context).copyWith(
                                       color: chartColors.tooltipTextColor,
                                     ),
@@ -393,16 +393,16 @@ class _MonitoringChartCardState extends State<MonitoringChartCard>
                                   ResponsiveText.body(context).copyWith(
                                     color: chartColors.tooltipTextColor,
                                   ),
-                            );
-                          }).toList(),
+                                );
+                              }).toList(),
+                    ),
+                  ),
+                  extraLinesData: ExtraLinesData(
+                    verticalLines: [],
+                    horizontalLines: [],
+                  ),
                 ),
               ),
-              extraLinesData: ExtraLinesData(
-                verticalLines: [],
-                horizontalLines: [],
-              ),
-            ),
-          ),
             ),
           ],
         );
@@ -787,27 +787,27 @@ class _MonitoringChartCardState extends State<MonitoringChartCard>
             ),
             const SizedBox(height: 8),
             SizedBox(
-          height: 200,
-          child: LineChart(
-            LineChartData(
-              minY: 0,
-              maxY: maxY,
-              gridData: FlGridData(
-                show: true,
-                horizontalInterval: maxY / 5,
-                getDrawingHorizontalLine:
+              height: 200,
+              child: LineChart(
+                LineChartData(
+                  minY: 0,
+                  maxY: maxY,
+                  gridData: FlGridData(
+                    show: true,
+                    horizontalInterval: maxY / 5,
+                    getDrawingHorizontalLine:
                         (value) => FlLine(
                           color: chartColors.horizontalLineColor,
                           strokeWidth: 1,
                         ),
-              ),
-              titlesData: FlTitlesData(
-                bottomTitles: AxisTitles(
-                  sideTitles: SideTitles(
-                    showTitles: true,
-                    interval: 1,
-                    getTitlesWidget: (value, _) {
-                      final idx = value.toInt();
+                  ),
+                  titlesData: FlTitlesData(
+                    bottomTitles: AxisTitles(
+                      sideTitles: SideTitles(
+                        showTitles: true,
+                        interval: 1,
+                        getTitlesWidget: (value, _) {
+                          final idx = value.toInt();
                           if (idx >= 0 && idx < effectiveWeeks.length) {
                             final item = effectiveWeeks[idx];
                             String label;
@@ -841,99 +841,99 @@ class _MonitoringChartCardState extends State<MonitoringChartCard>
                               label = 'W${idx + 1}';
                             }
 
-                        return Padding(
-                          padding: const EdgeInsets.only(top: 8),
-                          child: Text(
+                            return Padding(
+                              padding: const EdgeInsets.only(top: 8),
+                              child: Text(
                                 label,
-                            style: ResponsiveText.caption(context),
+                                style: ResponsiveText.caption(context),
                                 textAlign: TextAlign.center,
-                          ),
-                        );
-                      }
+                              ),
+                            );
+                          }
                           return Text(
                             '',
                             style: ResponsiveText.caption(context),
                           );
-                    },
+                        },
+                      ),
+                    ),
+                    leftTitles: AxisTitles(
+                      sideTitles: SideTitles(
+                        showTitles: true,
+                        interval: maxY / 5,
+                        reservedSize: 40,
+                        getTitlesWidget: (value, _) {
+                          if (useCost) {
+                            return Text(
+                              '₱${value.toStringAsFixed(0)}',
+                              style: ResponsiveText.caption(context),
+                            );
+                          }
+                          return Text(
+                            value.toStringAsFixed(1),
+                            style: ResponsiveText.caption(context),
+                          );
+                        },
+                      ),
+                    ),
+                    topTitles: const AxisTitles(
+                      sideTitles: SideTitles(showTitles: false),
+                    ),
+                    rightTitles: const AxisTitles(
+                      sideTitles: SideTitles(showTitles: false),
+                    ),
                   ),
-                ),
-                leftTitles: AxisTitles(
-                  sideTitles: SideTitles(
-                    showTitles: true,
-                    interval: maxY / 5,
-                    reservedSize: 40,
-                    getTitlesWidget: (value, _) {
-                      if (useCost) {
-                        return Text(
-                          '₱${value.toStringAsFixed(0)}',
-                          style: ResponsiveText.caption(context),
-                        );
-                      }
-                      return Text(
-                        value.toStringAsFixed(1),
-                        style: ResponsiveText.caption(context),
-                      );
-                    },
-                  ),
-                ),
-                topTitles: const AxisTitles(
-                  sideTitles: SideTitles(showTitles: false),
-                ),
-                rightTitles: const AxisTitles(
-                  sideTitles: SideTitles(showTitles: false),
-                ),
-              ),
-              borderData: FlBorderData(show: false),
-              lineBarsData: [
-                LineChartBarData(
-                  spots: spots,
-                  isCurved: true,
+                  borderData: FlBorderData(show: false),
+                  lineBarsData: [
+                    LineChartBarData(
+                      spots: spots,
+                      isCurved: true,
                       color: chartColors.primaryColor,
-                  barWidth: 3,
-                  belowBarData: BarAreaData(
-                    show: true,
+                      barWidth: 3,
+                      belowBarData: BarAreaData(
+                        show: true,
                         color: chartColors.areaGradientColor,
-                  ),
-                  dotData: FlDotData(
-                    show: true,
-                    getDotPainter: (spot, percent, barData, index) {
-                      return FlDotCirclePainter(
-                        radius: 4,
+                      ),
+                      dotData: FlDotData(
+                        show: true,
+                        getDotPainter: (spot, percent, barData, index) {
+                          return FlDotCirclePainter(
+                            radius: 4,
                             color: chartColors.dotColor,
-                        strokeWidth: 2,
+                            strokeWidth: 2,
                             strokeColor: chartColors.dotStrokeColor,
-                      );
-                    },
-                  ),
-                ),
-              ],
-              lineTouchData: LineTouchData(
-                enabled: true,
-                touchTooltipData: LineTouchTooltipData(
+                          );
+                        },
+                      ),
+                    ),
+                  ],
+                  lineTouchData: LineTouchData(
+                    enabled: true,
+                    touchTooltipData: LineTouchTooltipData(
                       getTooltipColor:
                           (spots) => chartColors.tooltipBackgroundColor,
-                  getTooltipItems:
-                      (touchedSpots) =>
-                          touchedSpots.map((spot) {
-                            final idx = spot.x.toInt();
+                      getTooltipItems:
+                          (touchedSpots) =>
+                              touchedSpots.map((spot) {
+                                final idx = spot.x.toInt();
                                 final kwh =
                                     effectiveWeeks[idx]['totalKwh'] ?? 0.0;
                                 final cost =
                                     effectiveWeeks[idx]['totalCost'] ?? 0.0;
-                            return LineTooltipItem(
-                              '${kwh.toStringAsFixed(2)} kWh\n₱${cost.toStringAsFixed(2)}',
+                                return LineTooltipItem(
+                                  '${kwh.toStringAsFixed(2)} kWh\n₱${cost.toStringAsFixed(2)}',
                                   ResponsiveText.body(context).copyWith(
                                     color: chartColors.tooltipTextColor,
                                   ),
-                            );
-                          }).toList(),
-                ),
-              ),
+                                );
+                              }).toList(),
+                    ),
+                  ),
                   extraLinesData: ExtraLinesData(
                     verticalLines: [],
                     horizontalLines: [],
-            ),
-          ),
+                  ),
+                ),
               ),
             ),
           ],
@@ -968,10 +968,7 @@ class _MonitoringChartCardState extends State<MonitoringChartCard>
           return _buildEmptyChart('No monthly data available');
         }
 
-        final data = snapshot.data!;
-        final useCost = _selectedMetric == ChartMetric.cost;
-        final maxY = _calculateMaxValue(data, useCost: useCost) * 1.2;
-
+        final allData = snapshot.data!;
         final sortedMonthKeys =
             _yearMonths
                 .map(
@@ -979,24 +976,50 @@ class _MonitoringChartCardState extends State<MonitoringChartCard>
                       '${month.year}-${month.month.toString().padLeft(2, '0')}',
                 )
                 .toList();
-        _selectedMonthKey ??= sortedMonthKeys.last;
+        _selectedMonthKey ??= 'all';
+
+        // Filter data based on selection
+        final List<Map<String, dynamic>> data;
+        if (_selectedMonthKey == 'all') {
+          data = allData;
+        } else {
+          // Filter to show only the selected month
+          data =
+              allData
+                  .where((item) => item['month'] == _selectedMonthKey)
+                  .toList();
+        }
+
+        final useCost = _selectedMetric == ChartMetric.cost;
+        final maxY =
+            data.isEmpty
+                ? 100.0
+                : _calculateMaxValue(data, useCost: useCost) * 1.2;
 
         // Find selected month entry for summary
         Map<String, dynamic>? selectedMonth;
-        if (_selectedMonthKey != null) {
-          for (final item in data) {
+        if (_selectedMonthKey != null && _selectedMonthKey != 'all') {
+          for (final item in allData) {
             if (item['month'] == _selectedMonthKey) {
               selectedMonth = item;
               break;
             }
           }
         }
-        selectedMonth ??= data.last;
+        selectedMonth ??= allData.isNotEmpty ? allData.last : null;
 
         final double selectedMonthKwh =
-            (selectedMonth['totalKwh'] ?? 0.0).toDouble();
+            (selectedMonth?['totalKwh'] ?? 0.0).toDouble();
         final double selectedMonthCost =
-            (selectedMonth['totalCost'] ?? 0.0).toDouble();
+            (selectedMonth?['totalCost'] ?? 0.0).toDouble();
+
+        // Calculate totals for "View All" option
+        double allMonthsKwh = 0.0;
+        double allMonthsCost = 0.0;
+        for (final item in allData) {
+          allMonthsKwh += (item['totalKwh'] ?? 0.0).toDouble();
+          allMonthsCost += (item['totalCost'] ?? 0.0).toDouble();
+        }
 
         final chartColors = _ChartColors.fromContext(context);
 
@@ -1011,15 +1034,20 @@ class _MonitoringChartCardState extends State<MonitoringChartCard>
                   const SizedBox(width: 8),
                   DropdownButton<String>(
                     value: _selectedMonthKey,
-                    items:
-                        sortedMonthKeys
-                            .map(
-                              (key) => DropdownMenuItem<String>(
-                                value: key,
-                                child: Text(_formatMonthLabel(key)),
-                              ),
-                            )
-                            .toList(),
+                    items: [
+                      const DropdownMenuItem<String>(
+                        value: 'all',
+                        child: Text('View All Months'),
+                      ),
+                      ...sortedMonthKeys
+                          .map(
+                            (key) => DropdownMenuItem<String>(
+                              value: key,
+                              child: Text(_formatMonthLabel(key)),
+                            ),
+                          )
+                          .toList(),
+                    ],
                     onChanged: (value) {
                       if (value == null) return;
                       setState(() {
@@ -1032,147 +1060,166 @@ class _MonitoringChartCardState extends State<MonitoringChartCard>
             ),
             const SizedBox(height: 8),
             Text(
-              'Selected month total: ${selectedMonthKwh.toStringAsFixed(2)} kWh • ₱${selectedMonthCost.toStringAsFixed(2)}',
+              _selectedMonthKey == 'all'
+                  ? 'All months total: ${allMonthsKwh.toStringAsFixed(2)} kWh • ₱${allMonthsCost.toStringAsFixed(2)}'
+                  : 'Selected month total: ${selectedMonthKwh.toStringAsFixed(2)} kWh • ₱${selectedMonthCost.toStringAsFixed(2)}',
               style: ResponsiveText.body(
                 context,
               ).copyWith(fontWeight: FontWeight.w600),
             ),
             const SizedBox(height: 8),
-            SizedBox(
-          height: 200,
-          child: BarChart(
-            BarChartData(
-              minY: 0,
-              maxY: maxY,
-              gridData: FlGridData(show: false),
-              titlesData: FlTitlesData(
-                bottomTitles: AxisTitles(
-                  sideTitles: SideTitles(
-                    showTitles: true,
-                    interval: 1,
-                    getTitlesWidget: (value, _) {
-                      final idx = value.toInt();
-                      if (idx >= 0 && idx < data.length) {
-                        final monthStr = data[idx]['month'] as String?;
-                        if (monthStr != null) {
-                          try {
-                            final parts = monthStr.split('-');
-                            final monthInt =
-                                int.tryParse(
-                                  parts.length > 1 ? parts[1] : '0',
-                                ) ??
-                                0;
-                            return Padding(
-                              padding: const EdgeInsets.only(top: 8),
-                              child: Text(
-                                DateFormat(
-                                  'MMM',
-                                ).format(DateTime(2000, monthInt)),
+            data.isEmpty
+                ? _buildEmptyChart('No data available for selected month')
+                : SizedBox(
+                  height: 200,
+                  child: BarChart(
+                    BarChartData(
+                      minY: 0,
+                      maxY: maxY,
+                      gridData: FlGridData(show: false),
+                      titlesData: FlTitlesData(
+                        bottomTitles: AxisTitles(
+                          sideTitles: SideTitles(
+                            showTitles: true,
+                            interval: 1,
+                            getTitlesWidget: (value, _) {
+                              final idx = value.toInt();
+                              if (idx >= 0 && idx < data.length) {
+                                final monthStr = data[idx]['month'] as String?;
+                                if (monthStr != null) {
+                                  try {
+                                    final parts = monthStr.split('-');
+                                    final monthInt =
+                                        int.tryParse(
+                                          parts.length > 1 ? parts[1] : '0',
+                                        ) ??
+                                        0;
+                                    return Padding(
+                                      padding: const EdgeInsets.only(top: 8),
+                                      child: Text(
+                                        DateFormat(
+                                          'MMM',
+                                        ).format(DateTime(2000, monthInt)),
+                                        style: ResponsiveText.caption(context),
+                                      ),
+                                    );
+                                  } catch (e) {
+                                    return Text(
+                                      '',
+                                      style: ResponsiveText.caption(context),
+                                    );
+                                  }
+                                }
+                              }
+                              return Text(
+                                '',
                                 style: ResponsiveText.caption(context),
-                              ),
-                            );
-                          } catch (e) {
-                            return Text(
-                              '',
-                              style: ResponsiveText.caption(context),
-                            );
-                          }
-                        }
-                      }
-                          return Text(
-                            '',
-                            style: ResponsiveText.caption(context),
-                          );
-                    },
-                  ),
-                ),
-                leftTitles: AxisTitles(
-                  sideTitles: SideTitles(
-                    showTitles: true,
-                    interval: maxY / 5,
-                    reservedSize: 40,
-                    getTitlesWidget: (value, _) {
-                      if (useCost) {
-                        return Text(
-                          '₱${value.toStringAsFixed(0)}',
-                          style: ResponsiveText.caption(context),
-                        );
-                      }
-                      return Text(
-                        value.toStringAsFixed(0),
-                        style: ResponsiveText.caption(context),
-                      );
-                    },
-                  ),
-                ),
-                topTitles: const AxisTitles(
-                  sideTitles: SideTitles(showTitles: false),
-                ),
-                rightTitles: const AxisTitles(
-                  sideTitles: SideTitles(showTitles: false),
-                ),
-              ),
-              borderData: FlBorderData(show: false),
-              barGroups: List.generate(data.length, (i) {
-                final value =
-                    useCost
-                        ? (data[i]['totalCost'] ?? 0.0).toDouble()
-                        : (data[i]['totalKwh'] ?? 0.0).toDouble();
-                final kwh = (data[i]['totalKwh'] ?? 0.0).toDouble();
-                final isCurrentMonth = i == (data.length - 1);
-
-                return BarChartGroupData(
-                  x: i,
-                  barRods: [
-                    BarChartRodData(
-                      toY: value,
-                      width: 20,
-                      color:
-                          isCurrentMonth
-                              ? null
-                              : _resolveConsumptionColor(context, kwh),
-                      gradient:
-                          isCurrentMonth
-                              ? LinearGradient(
-                                    colors: [
-                                      chartColors.secondaryColor,
-                                      chartColors.tertiaryColor,
-                                    ],
-                              )
-                              : null,
-                      borderRadius: const BorderRadius.vertical(
-                        top: Radius.circular(4),
+                              );
+                            },
+                          ),
+                        ),
+                        leftTitles: AxisTitles(
+                          sideTitles: SideTitles(
+                            showTitles: true,
+                            interval: maxY / 5,
+                            reservedSize: 40,
+                            getTitlesWidget: (value, _) {
+                              if (useCost) {
+                                return Text(
+                                  '₱${value.toStringAsFixed(0)}',
+                                  style: ResponsiveText.caption(context),
+                                );
+                              }
+                              return Text(
+                                value.toStringAsFixed(0),
+                                style: ResponsiveText.caption(context),
+                              );
+                            },
+                          ),
+                        ),
+                        topTitles: const AxisTitles(
+                          sideTitles: SideTitles(showTitles: false),
+                        ),
+                        rightTitles: const AxisTitles(
+                          sideTitles: SideTitles(showTitles: false),
+                        ),
                       ),
-                      backDrawRodData: BackgroundBarChartRodData(
-                        show: true,
-                        toY: maxY,
-                            color: chartColors.backgroundRodColor,
+                      borderData: FlBorderData(show: false),
+                      barGroups: List.generate(data.length, (i) {
+                        final value =
+                            useCost
+                                ? (data[i]['totalCost'] ?? 0.0).toDouble()
+                                : (data[i]['totalKwh'] ?? 0.0).toDouble();
+                        final kwh = (data[i]['totalKwh'] ?? 0.0).toDouble();
+                        // Check if this is the current month by comparing with allData
+                        final monthKey = data[i]['month'] as String?;
+                        final now = DateTime.now();
+                        final currentMonthKey =
+                            '${now.year}-${now.month.toString().padLeft(2, '0')}';
+                        final isCurrentMonth = monthKey == currentMonthKey;
+
+                        return BarChartGroupData(
+                          x: i,
+                          barRods: [
+                            BarChartRodData(
+                              toY: value,
+                              width: 20,
+                              color:
+                                  isCurrentMonth
+                                      ? null
+                                      : _resolveConsumptionColor(context, kwh),
+                              gradient:
+                                  isCurrentMonth
+                                      ? LinearGradient(
+                                        colors: [
+                                          chartColors.secondaryColor,
+                                          chartColors.tertiaryColor,
+                                        ],
+                                      )
+                                      : null,
+                              borderRadius: const BorderRadius.vertical(
+                                top: Radius.circular(4),
+                              ),
+                              backDrawRodData: BackgroundBarChartRodData(
+                                show: true,
+                                toY: maxY,
+                                color: chartColors.backgroundRodColor,
+                              ),
+                            ),
+                          ],
+                        );
+                      }),
+                      barTouchData: BarTouchData(
+                        enabled: true,
+                        touchTooltipData: BarTouchTooltipData(
+                          getTooltipColor:
+                              (group) => chartColors.tooltipBackgroundColor,
+                          getTooltipItem: (group, groupIndex, rod, rodIndex) {
+                            final idx = group.x.toInt();
+                            if (idx >= 0 && idx < data.length) {
+                              final kwh =
+                                  (data[idx]['totalKwh'] ?? 0.0).toDouble();
+                              final cost =
+                                  (data[idx]['totalCost'] ?? 0.0).toDouble();
+                              return BarTooltipItem(
+                                '${kwh.toStringAsFixed(2)} kWh\n₱${cost.toStringAsFixed(2)}',
+                                ResponsiveText.body(
+                                  context,
+                                ).copyWith(color: chartColors.tooltipTextColor),
+                              );
+                            }
+                            return BarTooltipItem(
+                              '',
+                              ResponsiveText.body(
+                                context,
+                              ).copyWith(color: chartColors.tooltipTextColor),
+                            );
+                          },
+                        ),
                       ),
                     ),
-                  ],
-                );
-              }),
-              barTouchData: BarTouchData(
-                enabled: true,
-                touchTooltipData: BarTouchTooltipData(
-                  getTooltipColor:
-                          (group) => chartColors.tooltipBackgroundColor,
-                  getTooltipItem: (group, groupIndex, rod, rodIndex) {
-                    final idx = group.x.toInt();
-                    final kwh = (data[idx]['totalKwh'] ?? 0.0).toDouble();
-                    final cost = (data[idx]['totalCost'] ?? 0.0).toDouble();
-                    return BarTooltipItem(
-                      '${kwh.toStringAsFixed(2)} kWh\n₱${cost.toStringAsFixed(2)}',
-                      ResponsiveText.body(
-                        context,
-                          ).copyWith(color: chartColors.tooltipTextColor),
-                    );
-                  },
+                  ),
                 ),
-              ),
-            ),
-          ),
-            ),
           ],
         );
       },
@@ -1322,7 +1369,7 @@ class _MonitoringChartCardState extends State<MonitoringChartCard>
           };
         }
       } catch (e) {
-      AppLogger.w(
+        AppLogger.w(
           '[MonitoringChartCard] Error aggregating current month from daily data: $e',
         );
       }
@@ -1344,7 +1391,7 @@ class _MonitoringChartCardState extends State<MonitoringChartCard>
     // Fallback: Build weekly buckets from daily data
     // Always use calendar-based weeks per month (4-5 weeks max per month)
     try {
-        AppLogger.i(
+      AppLogger.i(
         '[MonitoringChartCard] Building weekly buckets from daily data...',
       );
       final dailyData = await _getDailyData();
@@ -1445,8 +1492,8 @@ class _MonitoringChartCardState extends State<MonitoringChartCard>
             (month) => {
               'month':
                   '${month.year}-${month.month.toString().padLeft(2, '0')}',
-            'totalKwh': 0.0,
-            'totalCost': 0.0,
+              'totalKwh': 0.0,
+              'totalCost': 0.0,
             },
           )
           .toList();
@@ -1505,15 +1552,15 @@ class _MonitoringChartCardState extends State<MonitoringChartCard>
           source = datasetData;
           hasSource = true;
         } else {
-        AppLogger.w(
+          AppLogger.w(
             '[MonitoringChartCard] Dataset reference empty, attempting update...',
-        );
-        final updated =
-            await _monitoringDatasetService.updateDatasetReference();
-        if (updated) {
-          final updatedData =
-              await _monitoringDatasetService.getMonthlyDataForCharts();
-          if (updatedData.isNotEmpty) {
+          );
+          final updated =
+              await _monitoringDatasetService.updateDatasetReference();
+          if (updated) {
+            final updatedData =
+                await _monitoringDatasetService.getMonthlyDataForCharts();
+            if (updatedData.isNotEmpty) {
               source = updatedData;
               hasSource = true;
             }
@@ -1526,23 +1573,23 @@ class _MonitoringChartCardState extends State<MonitoringChartCard>
       }
 
       if (!hasSource) {
-      AppLogger.i(
-        '[MonitoringChartCard] Falling back to TrendsService for monthly data...',
-      );
+        AppLogger.i(
+          '[MonitoringChartCard] Falling back to TrendsService for monthly data...',
+        );
         final startDate = DateTime(_currentYear, 1, 1);
         final endDate = DateTime(_currentYear, 12, 31);
         final trendsData = await _trendsService.getMonthlyTrends(
           startDate,
           endDate,
         );
-      if (trendsData.isNotEmpty) {
+        if (trendsData.isNotEmpty) {
           source = trendsData;
           hasSource = true;
         }
       }
 
       if (!hasSource) {
-      AppLogger.w(
+        AppLogger.w(
           '[MonitoringChartCard] Aggregating monthly data from daily cache...',
         );
         final dailyData = await _getDailyData();
@@ -1567,12 +1614,12 @@ class _MonitoringChartCardState extends State<MonitoringChartCard>
           final currentMonthData = await _getCurrentMonthRealtimeData();
           if (currentMonthData.isNotEmpty) {
             sourceMap[currentMonthKey] = currentMonthData;
-        AppLogger.i(
+            AppLogger.i(
               '[MonitoringChartCard] Updated current month with real-time data: ${currentMonthData['totalKwh']} kWh',
-        );
-      }
+            );
+          }
         } catch (e) {
-      AppLogger.w(
+          AppLogger.w(
             '[MonitoringChartCard] Error getting current month real-time data: $e',
           );
         }

@@ -8,8 +8,6 @@ import 'package:exercise_app/pages/auth/widgets/auth_animation.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:exercise_app/services/phone_auth_service.dart';
 import 'package:provider/provider.dart';
-import 'package:exercise_app/components/welcome_dialog.dart';
-import 'package:exercise_app/models/user_model.dart';
 
 /// Modern, redesigned login page with split-screen layout and Lottie animations
 class NewLoginPage extends StatefulWidget {
@@ -153,7 +151,6 @@ class _NewLoginPageState extends State<NewLoginPage> {
       );
 
       if (user != null) {
-        final isPhoneVerified = user.isPhoneVerified;
         setState(() {
           _showSuccessAnimation = true;
         });
@@ -163,34 +160,30 @@ class _NewLoginPageState extends State<NewLoginPage> {
 
         if (!mounted) return;
 
-        if (isPhoneVerified) {
-          await _showWelcomeAndNavigate(user);
-        } else {
-          // Phone not verified - send SMS OTP and navigate to SMS entry page
-          try {
-            final phoneAuthService = context.read<PhoneAuthService>();
-            phoneAuthService.reset();
+        // Always require phone verification after sign in
+        try {
+          final phoneAuthService = context.read<PhoneAuthService>();
+          phoneAuthService.reset();
 
-            // Send SMS OTP automatically for sign-in
-            await _authService.sendPhoneVerificationOtp(user.mobileNumber);
+          await _authService.sendPhoneVerificationOtp(user.mobileNumber);
 
-            if (mounted) {
-              AppSnackbar.showInfo(
-                context,
-                'Please verify your phone number. OTP sent to ${user.mobileNumber}',
-              );
-              // Navigate to SMS entry page
-              context.go('/sms');
-            }
-          } catch (e) {
-            if (mounted) {
-              AppSnackbar.showWarning(
-                context,
-                'Please verify your phone number. Failed to send OTP: ${e.toString()}',
-              );
-              // Still navigate to SMS page so user can manually request OTP
-              context.go('/sms');
-            }
+          if (mounted) {
+            AppSnackbar.showInfo(
+              context,
+              'Please verify your phone number. OTP sent to ${user.mobileNumber}',
+            );
+          }
+        } catch (e) {
+          if (mounted) {
+            AppSnackbar.showWarning(
+              context,
+              'Please verify your phone number. Failed to send OTP: ${e.toString()}',
+            );
+          }
+        } finally {
+          if (mounted) {
+            // Navigate to SMS entry page for verification
+            context.go('/sms');
           }
         }
       }
@@ -219,7 +212,6 @@ class _NewLoginPageState extends State<NewLoginPage> {
       final user = await _authService.signInWithGoogle();
 
       if (user != null) {
-        final isPhoneVerified = user.isPhoneVerified;
         setState(() {
           _showSuccessAnimation = true;
         });
@@ -229,50 +221,42 @@ class _NewLoginPageState extends State<NewLoginPage> {
 
         if (!mounted) return;
 
-        if (isPhoneVerified) {
-          await _showWelcomeAndNavigate(user);
-        } else {
-          // Phone not verified - check if user has a phone number
-          final phoneAuthService = context.read<PhoneAuthService>();
-          phoneAuthService.reset();
+        // Always require phone verification after Google sign in
+        final phoneAuthService = context.read<PhoneAuthService>();
+        phoneAuthService.reset();
 
-          final hasPhoneNumber =
-              user.mobileNumber.isNotEmpty &&
-              user.mobileNumber.trim().isNotEmpty;
+        final hasPhoneNumber =
+            user.mobileNumber.isNotEmpty && user.mobileNumber.trim().isNotEmpty;
 
-          if (hasPhoneNumber) {
-            // User has phone number but not verified - send OTP automatically
-            try {
-              await _authService.sendPhoneVerificationOtp(user.mobileNumber);
+        if (hasPhoneNumber) {
+          try {
+            await _authService.sendPhoneVerificationOtp(user.mobileNumber);
 
-              if (mounted) {
-                AppSnackbar.showInfo(
-                  context,
-                  'Please verify your phone number. OTP sent to ${user.mobileNumber}',
-                );
-                // Navigate to SMS entry page (verification page)
-                context.go('/sms');
-              }
-            } catch (e) {
-              if (mounted) {
-                AppSnackbar.showWarning(
-                  context,
-                  'Please verify your phone number. Failed to send OTP: ${e.toString()}',
-                );
-                // Still navigate to SMS page so user can manually request OTP
-                context.go('/sms');
-              }
-            }
-          } else {
-            // User doesn't have phone number - navigate to phone entry page
             if (mounted) {
               AppSnackbar.showInfo(
                 context,
-                'Please enter your phone number to complete verification.',
+                'Please verify your phone number. OTP sent to ${user.mobileNumber}',
               );
-              // Navigate to phone entry page to collect phone number first
+            }
+          } catch (e) {
+            if (mounted) {
+              AppSnackbar.showWarning(
+                context,
+                'Please verify your phone number. Failed to send OTP: ${e.toString()}',
+              );
+            }
+          } finally {
+            if (mounted) {
               context.go('/sms');
             }
+          }
+        } else {
+          if (mounted) {
+            AppSnackbar.showInfo(
+              context,
+              'Please enter your phone number to complete verification.',
+            );
+            context.go('/sms');
           }
         }
       }
@@ -776,25 +760,6 @@ class _NewLoginPageState extends State<NewLoginPage> {
                   ],
                 ),
       ),
-    );
-  }
-
-  Future<void> _showWelcomeAndNavigate(UserModel user) async {
-    final displayName = user.displayName.trim();
-    final name =
-        displayName.isNotEmpty
-            ? displayName
-            : user.firstName.trim().isNotEmpty
-            ? user.firstName.trim()
-            : '';
-
-    await WelcomeDialog.show(
-      context,
-      userName: name.isNotEmpty ? name : null,
-      userEmail: user.email,
-      onContinue: () {
-        context.go('/home');
-      },
     );
   }
 }

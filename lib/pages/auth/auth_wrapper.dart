@@ -213,6 +213,10 @@ class _AuthWrapperState extends State<AuthWrapper> {
                         ),
                       );
                     }
+                    // Allow /sms even if already verified so we can enforce OTP on each login
+                    if (location == '/sms') {
+                      return const SizedBox.shrink();
+                    }
                   }
 
                   // If not fully verified, handle different paths
