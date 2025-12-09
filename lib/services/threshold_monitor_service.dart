@@ -134,19 +134,30 @@ class ThresholdMonitorTask {
         }
       }
 
-      // Hard stop flag set from notification action buttons
+      // Check if alerts are permanently stopped
       final alertsStoppedLocally =
           prefs.getBool(ThresholdAlertService.stoppedPrefsKey) ?? false;
       if (alertsStoppedLocally) {
         AppLogger.i(
-          '[ThresholdMonitorTask] Alerts stopped locally - skipping notification loop.',
+          '[ThresholdMonitorTask] Alerts permanently stopped locally - skipping notification loop.',
         );
         return;
       }
 
-      await ThresholdAlertService.instance.ensureChannelReady(
-        fromBackground: true,
-      );
+      // Check if alerts are temporarily dismissed
+      // Note: If threshold is reached, triggerAlert will auto-resume by clearing dismissed flag
+      final alertsDismissedLocally =
+          prefs.getBool(ThresholdAlertService.dismissedPrefsKey) ?? false;
+      if (alertsDismissedLocally) {
+        AppLogger.d(
+          '[ThresholdMonitorTask] Alerts dismissed locally (temporary pause). '
+          'Will auto-resume when threshold is reached again.',
+        );
+        // Continue to check threshold - if reached, triggerAlert will auto-resume
+      }
+
+      // OneSignal is initialized automatically when needed
+      // No need to ensure channel ready (that was for AwesomeNotifications)
 
       final budgetDoc =
           await _firestore
@@ -177,13 +188,24 @@ class ThresholdMonitorTask {
         return;
       }
 
-      // Check if alerts are stopped - fully override notification loop
+      // Check if alerts are permanently stopped - fully override notification loop
       final alertsStopped = data['alertsStopped'] ?? false;
       if (alertsStopped) {
         AppLogger.i(
-          '[ThresholdMonitorTask] Alerts stopped by user - notification loop disabled.',
+          '[ThresholdMonitorTask] Alerts permanently stopped by user - notification loop disabled.',
         );
         return;
+      }
+
+      // Check if alerts are temporarily dismissed
+      // Note: If threshold is reached, triggerAlert will auto-resume by clearing dismissed flag
+      final alertsDismissed = data['alertsDismissed'] ?? false;
+      if (alertsDismissed) {
+        AppLogger.d(
+          '[ThresholdMonitorTask] Alerts dismissed (temporary pause). '
+          'Will auto-resume when threshold is reached again.',
+        );
+        // Continue to check threshold - if reached, triggerAlert will auto-resume
       }
 
       // Check if alerts are snoozed - override notification loop until snooze expires

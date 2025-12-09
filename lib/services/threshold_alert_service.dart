@@ -1,7 +1,5 @@
 import 'dart:async';
-import 'dart:typed_data';
 
-import 'package:awesome_notifications/awesome_notifications.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/services.dart';
@@ -19,68 +17,18 @@ class ThresholdAlertService {
     'com.example.exercise_app/threshold_alert',
   );
 
-  static const String _channelKey = 'threshold_alerts_v2';
-  static const int _notificationId = 91001;
-
   static const String _prefsActiveKey = 'threshold_alert_active';
   static const String _prefsLastTriggerTs = 'threshold_alert_last_trigger_ts';
   static const String _prefsLastThresholdKey =
       'threshold_alert_last_threshold_value';
   static const String snoozePrefsKey = 'threshold_alert_snoozed_until';
   static const String stoppedPrefsKey =
-      'threshold_alert_stopped'; // Flag to stop notification loop
+      'threshold_alert_stopped'; // Flag to permanently stop notification loop
+  static const String dismissedPrefsKey =
+      'threshold_alert_dismissed'; // Flag to temporarily pause notification loop (auto-resumes when threshold reached again)
 
   static const Duration _cooldown = Duration(minutes: 5);
   static const Duration _defaultSnoozeDuration = Duration(minutes: 5);
-
-  bool _channelReady = false;
-
-  /// Ensures that the threshold notification channel exists.
-  Future<void> ensureChannelReady({bool fromBackground = false}) async {
-    if (_channelReady) return;
-
-    final channel = NotificationChannel(
-      channelKey: _channelKey,
-      channelName: 'Threshold Alerts',
-      channelDescription: 'Alerts when energy or budget thresholds are reached',
-      defaultColor: const Color(0xFFE74C3C),
-      ledColor: const Color(0xFFE74C3C),
-      importance: NotificationImportance.Max,
-      locked: true,
-      playSound: true,
-      soundSource: 'resource://raw/alert_tone',
-      enableVibration: true,
-      vibrationPattern: Int64List.fromList([
-        0,
-        1800,
-        600,
-        1800,
-        600,
-        1800,
-        600,
-        1800,
-        600,
-        1800,
-        600,
-      ]),
-      criticalAlerts: true,
-      channelShowBadge: true,
-      defaultPrivacy: NotificationPrivacy.Public,
-      defaultRingtoneType: DefaultRingtoneType.Alarm,
-    );
-
-    try {
-      await AwesomeNotifications().setChannel(channel);
-    } on PlatformException {
-      await AwesomeNotifications().initialize(
-        'resource://drawable/update_icon',
-        [channel],
-        debug: false,
-      );
-    } finally {
-      _channelReady = true;
-    }
-  }
 
   /// Triggers an alert if cooldowns allow. Returns true if a new alert was shown.
   Future<bool> triggerAlert({
@@ -90,17 +38,39 @@ class ThresholdAlertService {
     required double thresholdPercentage,
     bool force = false,
   }) async {
-    await ensureChannelReady();
+    // Ensure OneSignal is initialized
+    if (!OneSignalService.instance.isInitialized) {
+      await OneSignalService.instance.initialize();
+    }
 
     final prefs = await SharedPreferences.getInstance();
 
-    // Check if alerts were stopped by user
+    // Check if alerts were permanently stopped by user (Stop button)
     final isStopped = prefs.getBool(stoppedPrefsKey) ?? false;
     if (isStopped && !force) {
       AppLogger.i(
-        '[ThresholdAlertService] Alerts stopped by user - notification loop disabled.',
+        '[ThresholdAlertService] Alerts permanently stopped by user - notification loop disabled.',
       );
       return false;
+    }
+
+    // Check if alerts were dismissed (temporary pause)
+    // If threshold is reached again, auto-resume notifications by clearing dismissed flag
+    final isDismissed = prefs.getBool(dismissedPrefsKey) ?? false;
+    if (isDismissed && !force) {
+      // Auto-resume: Clear dismissed flag when threshold is reached again
+      // Also clear cooldown to allow immediate notification after auto-resume
+      // This allows notifications to resume automatically when threshold is reached again
+      AppLogger.i(
+        '[ThresholdAlertService] Alerts were dismissed (temporary pause). '
+        'Threshold reached again - auto-resuming notifications and clearing cooldown.',
+      );
+      await prefs.setBool(dismissedPrefsKey, false);
+      await prefs.remove(
+        _prefsLastTriggerTs,
+      ); // Clear cooldown to allow immediate notification
+      await prefs.remove(_prefsLastThresholdKey); // Clear threshold tracking
+      await _clearDismissedInFirestore();
     }
 
     final now = DateTime.now();
@@ -134,86 +104,31 @@ class ThresholdAlertService {
     await _startNativeAudio();
     await _clearSnooze();
 
-    final useOneSignalWithActions =
-        OneSignalService.instance.isInitialized &&
-        OneSignalService.instance.hasRestApiKeyConfigured;
-
-    // Use OneSignal only when REST key is configured (buttons require it)
-    if (useOneSignalWithActions) {
-      await OneSignalService.instance.sendThresholdAlert(
-        title: '⚠️ Threshold Reached',
-        body:
-            'Usage ₱${consumedCost.toStringAsFixed(2)} of ₱${totalBudget.toStringAsFixed(2)} '
-            '(${usagePercent.toStringAsFixed(1)}%). Remaining ₱${remainingBudget.toStringAsFixed(2)}.',
-        consumedCost: consumedCost,
-        totalBudget: totalBudget,
-        remainingBudget: remainingBudget,
-        thresholdPercentage: thresholdPercentage,
-        onAction: (action) {
-          // Handle action callback
-          switch (action) {
-            case 'snooze':
-              _handleSnoozeAction();
-              break;
-            case 'dismiss':
-              _handleDismissAction();
-              break;
-            case 'stop':
-              _handleStopAction();
-              break;
-          }
-        },
-      );
-    } else {
-      // Fallback to AwesomeNotifications WITH action buttons (snooze, dismiss, stop)
-      await AwesomeNotifications().createNotification(
-        content: NotificationContent(
-          id: _notificationId,
-          channelKey: _channelKey,
-          title: '⚠️ Threshold Reached',
-          body:
-              'Usage ₱${consumedCost.toStringAsFixed(2)} of ₱${totalBudget.toStringAsFixed(2)} '
-              '(${usagePercent.toStringAsFixed(1)}%). Remaining ₱${remainingBudget.toStringAsFixed(2)}.',
-          notificationLayout: NotificationLayout.BigText,
-          autoDismissible: false,
-          locked: true,
-          wakeUpScreen: true,
-          fullScreenIntent: true,
-          criticalAlert: true,
-          category: NotificationCategory.Alarm,
-          customSound: 'resource://raw/alert_tone',
-          displayOnForeground: true,
-          displayOnBackground: true,
-          icon: 'resource://drawable/update_icon',
-          largeIcon: 'resource://drawable/update_icon',
-          payload: {
-            'type': 'threshold_alert',
-            'threshold': thresholdPercentage.toStringAsFixed(1),
-            'consumed': consumedCost.toStringAsFixed(2),
-            'remaining': remainingBudget.toStringAsFixed(2),
-          },
-        ),
-        actionButtons: [
-          NotificationActionButton(
-            key: _snoozeActionKey,
-            label: 'Snooze',
-            actionType: ActionType.SilentAction,
-          ),
-          NotificationActionButton(
-            key: _dismissActionKey,
-            label: 'Dismiss',
-            actionType: ActionType.SilentAction,
-            isDangerousOption: true,
-          ),
-          NotificationActionButton(
-            key: _stopActionKey,
-            label: 'Stop',
-            actionType: ActionType.SilentAction,
-            isDangerousOption: true,
-          ),
-        ],
-      );
-    }
+    // Use OneSignal for threshold alerts (requires REST API key for action buttons)
+    await OneSignalService.instance.sendThresholdAlert(
+      title: '⚠️ Threshold Reached',
+      body:
+          'Usage ₱${consumedCost.toStringAsFixed(2)} of ₱${totalBudget.toStringAsFixed(2)} '
+          '(${usagePercent.toStringAsFixed(1)}%). Remaining ₱${remainingBudget.toStringAsFixed(2)}.',
+      consumedCost: consumedCost,
+      totalBudget: totalBudget,
+      remainingBudget: remainingBudget,
+      thresholdPercentage: thresholdPercentage,
+      onAction: (action) {
+        // Handle action callback
+        switch (action) {
+          case 'snooze':
+            _handleSnoozeAction();
+            break;
+          case 'dismiss':
+            _handleDismissAction();
+            break;
+          case 'stop':
+            _handleStopAction();
+            break;
+        }
+      },
+    );
 
     await prefs.setBool(_prefsActiveKey, true);
     await prefs.setString(_prefsLastTriggerTs, now.toIso8601String());
@@ -227,14 +142,9 @@ class ThresholdAlertService {
 
   /// Cancels the active threshold alert notification.
   Future<void> stopAlert({bool clearCooldown = false}) async {
-    await ensureChannelReady();
-
     // Cancel OneSignal notification if initialized
     if (OneSignalService.instance.isInitialized) {
       await OneSignalService.instance.cancelThresholdAlert();
-    } else {
-      // Fallback to AwesomeNotifications
-      await AwesomeNotifications().cancel(_notificationId);
     }
 
     await _stopNativeAudio();
@@ -266,17 +176,17 @@ class ThresholdAlertService {
     }
   }
 
-  /// Handles action buttons coming from Awesome Notifications.
-  @pragma('vm:entry-point')
-  Future<void> handleAction(ReceivedAction action) async {
-    switch (action.buttonKeyPressed) {
-      case _snoozeActionKey:
+  /// Handles action buttons coming from OneSignal notifications.
+  /// This method is called by OneSignalService when action buttons are clicked.
+  Future<void> handleAction(String actionId) async {
+    switch (actionId) {
+      case 'snooze':
         await _handleSnoozeAction();
         break;
-      case _dismissActionKey:
+      case 'dismiss':
         await _handleDismissAction();
         break;
-      case _stopActionKey:
+      case 'stop':
         await _handleStopAction();
         break;
       default:
@@ -284,10 +194,6 @@ class ThresholdAlertService {
         await stopAlert(clearCooldown: true);
     }
   }
-
-  static const String _snoozeActionKey = 'SNOOZE_THRESHOLD_ALERT';
-  static const String _dismissActionKey = 'DISMISS_THRESHOLD_ALERT';
-  static const String _stopActionKey = 'STOP_THRESHOLD_ALERT';
 
   Future<void> _handleSnoozeAction() async {
     await _setSnoozedUntil(DateTime.now().add(_defaultSnoozeDuration));
@@ -298,16 +204,30 @@ class ThresholdAlertService {
   }
 
   Future<void> _handleDismissAction() async {
+    final prefs = await SharedPreferences.getInstance();
+
+    // Set dismissed flag (temporary pause) - NOT stopped flag
+    // This allows notifications to auto-resume when threshold is reached again
+    await prefs.setBool(dismissedPrefsKey, true);
+    await prefs.setBool(stoppedPrefsKey, false); // Ensure stopped is false
+
     await _clearSnooze();
     await stopAlert(clearCooldown: true);
-    AppLogger.i('[ThresholdAlertService] Alert dismissed by user.');
+    await _markAlertsDismissedInFirestore();
+
+    AppLogger.i(
+      '[ThresholdAlertService] Alert dismissed by user - notification loop temporarily paused. '
+      'Notifications will auto-resume when threshold is reached again.',
+    );
   }
 
   Future<void> _handleStopAction() async {
     final prefs = await SharedPreferences.getInstance();
 
-    // Set stopped flag to prevent future notifications
+    // Set stopped flag to permanently prevent future notifications
     await prefs.setBool(stoppedPrefsKey, true);
+    // Clear dismissed flag when stopping (stop takes precedence)
+    await prefs.setBool(dismissedPrefsKey, false);
 
     await _clearSnooze();
     await stopAlert(clearCooldown: true);
@@ -315,7 +235,8 @@ class ThresholdAlertService {
     await _markAlertsStoppedInFirestore();
 
     AppLogger.i(
-      '[ThresholdAlertService] Alert stopped by user - notification loop disabled.',
+      '[ThresholdAlertService] Alert permanently stopped by user - notification loop disabled. '
+      'User must manually re-enable alerts.',
     );
   }
 
@@ -324,6 +245,10 @@ class ThresholdAlertService {
     try {
       final prefs = await SharedPreferences.getInstance();
       await prefs.setBool(stoppedPrefsKey, true);
+      await prefs.setBool(
+        dismissedPrefsKey,
+        false,
+      ); // Clear dismissed when stopping
       await _clearSnooze();
       await _markAlertsStoppedInFirestore();
       AppLogger.i(
@@ -332,6 +257,24 @@ class ThresholdAlertService {
     } catch (e) {
       AppLogger.w(
         '[ThresholdAlertService] Failed to persist stop flag from remote: $e',
+      );
+    }
+  }
+
+  /// Allows other services (e.g., OneSignal callbacks) to persist dismiss flag
+  Future<void> markDismissedFromRemote() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setBool(dismissedPrefsKey, true);
+      await prefs.setBool(stoppedPrefsKey, false); // Ensure stopped is false
+      await _clearSnooze();
+      await _markAlertsDismissedInFirestore();
+      AppLogger.i(
+        '[ThresholdAlertService] Dismiss flag persisted from remote action.',
+      );
+    } catch (e) {
+      AppLogger.w(
+        '[ThresholdAlertService] Failed to persist dismiss flag from remote: $e',
       );
     }
   }
@@ -350,6 +293,7 @@ class ThresholdAlertService {
           .doc('current')
           .set({
             'alertsStopped': true,
+            'alertsDismissed': false, // Clear dismissed when stopping
             'alertsStoppedAt': FieldValue.serverTimestamp(),
             'snoozedUntil': null,
           }, SetOptions(merge: true));
@@ -364,17 +308,78 @@ class ThresholdAlertService {
     }
   }
 
+  /// Persist dismissed state in Firestore so background checks also skip
+  Future<void> _markAlertsDismissedInFirestore() async {
+    try {
+      final user = FirebaseAuth.instance.currentUser;
+      if (user == null) return;
+
+      final firestore = FirebaseFirestore.instance;
+      await firestore
+          .collection('users')
+          .doc(user.uid)
+          .collection('budget_target')
+          .doc('current')
+          .set({
+            'alertsDismissed': true,
+            'alertsStopped': false, // Ensure stopped is false when dismissing
+            'alertsDismissedAt': FieldValue.serverTimestamp(),
+            'snoozedUntil': null,
+          }, SetOptions(merge: true));
+
+      AppLogger.i(
+        '[ThresholdAlertService] alertsDismissed flag stored in Firestore',
+      );
+    } catch (e) {
+      AppLogger.w(
+        '[ThresholdAlertService] Failed to persist alertsDismissed to Firestore: $e',
+      );
+    }
+  }
+
+  /// Clear dismissed state in Firestore (called when auto-resuming)
+  Future<void> _clearDismissedInFirestore() async {
+    try {
+      final user = FirebaseAuth.instance.currentUser;
+      if (user == null) return;
+
+      final firestore = FirebaseFirestore.instance;
+      await firestore
+          .collection('users')
+          .doc(user.uid)
+          .collection('budget_target')
+          .doc('current')
+          .set({'alertsDismissed': false}, SetOptions(merge: true));
+
+      AppLogger.i(
+        '[ThresholdAlertService] alertsDismissed flag cleared in Firestore (auto-resume)',
+      );
+    } catch (e) {
+      AppLogger.w(
+        '[ThresholdAlertService] Failed to clear alertsDismissed in Firestore: $e',
+      );
+    }
+  }
+
   /// Re-enable alerts after they were stopped
   Future<void> enableAlerts() async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool(stoppedPrefsKey, false);
+    await prefs.setBool(dismissedPrefsKey, false);
+    await _clearDismissedInFirestore();
     AppLogger.i('[ThresholdAlertService] Alerts re-enabled.');
   }
 
-  /// Check if alerts are currently stopped
+  /// Check if alerts are currently stopped (permanent)
   Future<bool> isAlertsStopped() async {
     final prefs = await SharedPreferences.getInstance();
     return prefs.getBool(stoppedPrefsKey) ?? false;
+  }
+
+  /// Check if alerts are currently dismissed (temporary)
+  Future<bool> isAlertsDismissed() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getBool(dismissedPrefsKey) ?? false;
   }
 
   Future<void> _setSnoozedUntil(DateTime until) async {

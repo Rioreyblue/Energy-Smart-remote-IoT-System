@@ -4,6 +4,7 @@ import 'package:onesignal_flutter/onesignal_flutter.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:http/http.dart' as http;
+import 'package:shared_preferences/shared_preferences.dart';
 import '../utils/app_logger.dart';
 import '../utils/app_router.dart';
 import 'threshold_alert_service.dart';
@@ -16,11 +17,10 @@ class OneSignalService {
   bool _initialized = false;
   String? _playerId;
   static const String _oneSignalAppId = '741790af-bbf1-4480-9c92-18352b884ea3';
-  // TODO: Add your OneSignal REST API Key here for action buttons support
-  // Get it from: OneSignal Dashboard > Settings > Keys & IDs > REST API Key
-  // Without this key, notifications will be sent but without action buttons
+  // OneSignal REST API Key for action buttons support
   // Action buttons (snooze, dismiss, stop) require REST API
-  static const String _oneSignalRestApiKey = 'YOUR_REST_API_KEY_HERE';
+  static const String _oneSignalRestApiKey =
+      'os_v2_app_oqlzbl536fcibhesda2sxccouom43csqdcaulf4m3xigbvnnujd5lckbdgwz74v4jafijp2muzpjx6y5mkvvbo6nnac7cfcazacz6va';
 
   /// Initialize OneSignal SDK
   Future<void> initialize() async {
@@ -125,6 +125,9 @@ class OneSignalService {
             AppLogger.i(
               '[OneSignalService] Navigated to Goals page from notification',
             );
+          } else {
+            // Handle other notification types
+            _handleNotificationClick(type, additionalData);
           }
         }
       });
@@ -219,6 +222,7 @@ class OneSignalService {
 
   /// Send threshold alert notification with action buttons (snooze, dismiss, stop)
   /// Uses OneSignal REST API to support action buttons
+  /// Works even when app is closed (background delivery via OneSignal)
   Future<void> sendThresholdAlert({
     required String title,
     required String body,
@@ -230,17 +234,8 @@ class OneSignalService {
   }) async {
     if (!_initialized || _playerId == null || _playerId!.isEmpty) {
       AppLogger.w(
-        '[OneSignalService] Not initialized or no player ID, cannot send threshold alert',
-      );
-      // Fallback to local notification
-      await _sendLocalThresholdAlert(
-        title: title,
-        body: body,
-        consumedCost: consumedCost,
-        totalBudget: totalBudget,
-        remainingBudget: remainingBudget,
-        thresholdPercentage: thresholdPercentage,
-        onAction: onAction,
+        '[OneSignalService] Not initialized or no player ID, cannot send threshold alert. '
+        'Please ensure OneSignal is properly initialized.',
       );
       return;
     }
@@ -308,50 +303,31 @@ class OneSignalService {
         );
 
         if (response.statusCode == 200) {
-          AppLogger.i('[OneSignalService] Threshold alert sent via REST API');
+          AppLogger.i(
+            '[OneSignalService] ✅ Threshold alert sent via REST API (works when app is closed)',
+          );
           return;
         } else {
-          AppLogger.w(
-            '[OneSignalService] REST API failed: ${response.statusCode}, falling back to local notification',
+          AppLogger.e(
+            '[OneSignalService] ❌ REST API failed: ${response.statusCode} - ${response.body}',
           );
+          // Log error but don't throw - allow system to continue
+          // The notification won't be sent, but the app won't crash
         }
       } catch (e) {
-        AppLogger.w(
-          '[OneSignalService] Error using REST API: $e, falling back to local notification',
-        );
+        AppLogger.e('[OneSignalService] ❌ Error using REST API: $e');
+        // Log error but don't throw - allow system to continue
       }
+    } else {
+      // REST API key not configured - cannot send notifications with action buttons
+      AppLogger.e(
+        '[OneSignalService] ❌ REST API key not configured. '
+        'Cannot send notifications with action buttons. '
+        'Please configure OneSignal REST API key in onesignal_service.dart',
+      );
+      // Don't throw - just log the error
+      // The notification won't be sent, but the app won't crash
     }
-
-    // Fallback to local notification
-    await _sendLocalThresholdAlert(
-      title: title,
-      body: body,
-      consumedCost: consumedCost,
-      totalBudget: totalBudget,
-      remainingBudget: remainingBudget,
-      thresholdPercentage: thresholdPercentage,
-      onAction: onAction,
-    );
-  }
-
-  /// Fallback: Send local threshold alert (without action buttons)
-  /// Note: OneSignal local notifications don't support action buttons
-  /// Action buttons require REST API
-  Future<void> _sendLocalThresholdAlert({
-    required String title,
-    required String body,
-    required double consumedCost,
-    required double totalBudget,
-    required double remainingBudget,
-    required double thresholdPercentage,
-    Function(String action)? onAction,
-  }) async {
-    AppLogger.w(
-      '[OneSignalService] Local notifications without REST API key - action buttons not available. '
-      'Please configure OneSignal REST API key for full functionality.',
-    );
-    // OneSignal Flutter SDK doesn't support action buttons in local notifications
-    // User will need to click the notification to handle actions
   }
 
   Function(String action)? _pendingActionCallback;
@@ -364,14 +340,28 @@ class OneSignalService {
   ) async {
     AppLogger.i('[OneSignalService] Threshold action clicked: $actionId');
 
-    // Handle stop action directly to ensure notification loop stops
+    // Handle stop and dismiss actions directly to ensure notification loop updates
     // This works even when app is closed
     if (actionId == 'stop') {
       try {
-        // Persist stop state so background loop halts everywhere
+        // Persist stop state so background loop halts everywhere (permanent)
         await ThresholdAlertService.instance.markStoppedFromRemote();
+        AppLogger.i(
+          '[OneSignalService] Stop action persisted - notifications permanently disabled',
+        );
       } catch (e) {
         AppLogger.e('[OneSignalService] Error setting stopped flag: $e');
+      }
+    } else if (actionId == 'dismiss') {
+      try {
+        // Persist dismiss state so background loop pauses temporarily
+        // Notifications will auto-resume when threshold is reached again
+        await ThresholdAlertService.instance.markDismissedFromRemote();
+        AppLogger.i(
+          '[OneSignalService] Dismiss action persisted - notifications temporarily paused (will auto-resume)',
+        );
+      } catch (e) {
+        AppLogger.e('[OneSignalService] Error setting dismissed flag: $e');
       }
     }
 
@@ -381,8 +371,7 @@ class OneSignalService {
       _pendingActionCallback!(actionId);
       _pendingActionCallback = null;
     } else {
-      // If no callback (app might be closed), log the action
-      // Stop action is already handled above
+      // If no callback (app might be closed), actions are already handled above
       AppLogger.d(
         '[OneSignalService] Action handled without callback (app may be closed): $actionId',
       );
@@ -400,6 +389,287 @@ class OneSignalService {
       AppLogger.i('[OneSignalService] Threshold alert callback cleared');
     } catch (e) {
       AppLogger.e('[OneSignalService] Error cancelling threshold alert: $e');
+    }
+  }
+
+  /// Check if notification was already sent (prevents duplicates)
+  Future<bool> _wasNotificationSent(String notificationKey) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      return prefs.getBool(notificationKey) ?? false;
+    } catch (e) {
+      AppLogger.e('[OneSignalService] Error checking notification sent: $e');
+      return false;
+    }
+  }
+
+  /// Mark notification as sent in SharedPreferences
+  Future<void> _markNotificationSent(String notificationKey) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setBool(notificationKey, true);
+      // Store timestamp for cleanup (optional - can clean old entries periodically)
+      await prefs.setString(
+        '${notificationKey}_timestamp',
+        DateTime.now().toIso8601String(),
+      );
+    } catch (e) {
+      AppLogger.e('[OneSignalService] Error marking notification sent: $e');
+    }
+  }
+
+  /// Clear notification sent flag (for testing or resending)
+  Future<void> clearNotificationSent(String notificationKey) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.remove(notificationKey);
+      await prefs.remove('${notificationKey}_timestamp');
+    } catch (e) {
+      AppLogger.e('[OneSignalService] Error clearing notification sent: $e');
+    }
+  }
+
+  /// Send generic notification via OneSignal REST API
+  /// Uses SharedPreferences to prevent duplicate notifications
+  Future<void> sendNotification({
+    required String title,
+    required String body,
+    required String type,
+    Map<String, dynamic>? data,
+    String? notificationKey, // Unique key for duplicate prevention
+    bool preventDuplicates = true,
+  }) async {
+    if (!_initialized || _playerId == null || _playerId!.isEmpty) {
+      AppLogger.w(
+        '[OneSignalService] Not initialized or no player ID, cannot send notification',
+      );
+      return;
+    }
+
+    // Check for duplicates if preventDuplicates is enabled
+    if (preventDuplicates && notificationKey != null) {
+      final wasSent = await _wasNotificationSent(notificationKey);
+      if (wasSent) {
+        AppLogger.d(
+          '[OneSignalService] Notification already sent (key: $notificationKey), skipping duplicate',
+        );
+        return;
+      }
+    }
+
+    // Try to use REST API if API key is configured
+    if (_oneSignalRestApiKey != 'YOUR_REST_API_KEY_HERE' &&
+        _oneSignalRestApiKey.isNotEmpty) {
+      try {
+        final notificationData = {'type': type, if (data != null) ...data};
+
+        final response = await http.post(
+          Uri.parse('https://onesignal.com/api/v1/notifications'),
+          headers: {
+            'Content-Type': 'application/json; charset=utf-8',
+            'Authorization': 'Basic $_oneSignalRestApiKey',
+          },
+          body: jsonEncode({
+            'app_id': _oneSignalAppId,
+            'include_player_ids': [_playerId],
+            'headings': {'en': title},
+            'contents': {'en': body},
+            'data': notificationData,
+            'priority': 10,
+            'ttl': 86400, // 24 hours
+            'sound': 'default',
+            'android_sound': 'default',
+            'ios_sound': 'default',
+            'content_available': true,
+            'mutable_content': true,
+            'android_visibility': 1,
+            'android_priority': 2,
+          }),
+        );
+
+        if (response.statusCode == 200) {
+          AppLogger.i(
+            '[OneSignalService] Notification sent via REST API: $type',
+          );
+
+          // Mark as sent to prevent duplicates
+          if (preventDuplicates && notificationKey != null) {
+            await _markNotificationSent(notificationKey);
+          }
+          return;
+        } else {
+          AppLogger.w(
+            '[OneSignalService] REST API failed: ${response.statusCode}',
+          );
+        }
+      } catch (e) {
+        AppLogger.w('[OneSignalService] Error using REST API: $e');
+      }
+    } else {
+      AppLogger.w(
+        '[OneSignalService] REST API key not configured, cannot send notification',
+      );
+    }
+  }
+
+  /// Send chat message notification
+  Future<void> sendChatNotification({
+    required String senderName,
+    required String messagePreview,
+    required String chatId,
+    String? messageId,
+  }) async {
+    final notificationKey =
+        'chat_${chatId}_${messageId ?? DateTime.now().millisecondsSinceEpoch}';
+
+    await sendNotification(
+      title: senderName,
+      body: messagePreview,
+      type: 'chat_message',
+      notificationKey: notificationKey,
+      data: {'chatId': chatId, if (messageId != null) 'messageId': messageId},
+    );
+  }
+
+  /// Send rate update notification
+  Future<void> sendRateUpdateNotification({
+    required double oldRate,
+    required double newRate,
+  }) async {
+    final rateChange = newRate - oldRate;
+    final changeText =
+        rateChange > 0
+            ? 'increased'
+            : rateChange < 0
+            ? 'decreased'
+            : 'updated';
+    final changeIcon =
+        rateChange > 0
+            ? '📈'
+            : rateChange < 0
+            ? '📉'
+            : '📊';
+
+    final notificationKey = 'rate_update_${newRate.toStringAsFixed(4)}';
+
+    await sendNotification(
+      title: '$changeIcon Power Rate Updated',
+      body:
+          'Rate $changeText from ₱${oldRate.toStringAsFixed(4)}/kWh to ₱${newRate.toStringAsFixed(4)}/kWh',
+      type: 'rate_update',
+      notificationKey: notificationKey,
+      data: {'oldRate': oldRate.toString(), 'newRate': newRate.toString()},
+    );
+  }
+
+  /// Send appliance status notification
+  Future<void> sendApplianceStatusNotification({
+    required String applianceName,
+    required bool isOn,
+    required double? cost,
+  }) async {
+    final status = isOn ? 'turned ON' : 'turned OFF';
+    final costText = cost != null ? ' (₱${cost.toStringAsFixed(2)})' : '';
+    final notificationKey =
+        'appliance_${applianceName}_${isOn ? 'on' : 'off'}_${DateTime.now().millisecondsSinceEpoch ~/ 60000}'; // Per minute
+
+    await sendNotification(
+      title: 'Appliance $status',
+      body: '$applianceName has been $status$costText',
+      type: 'appliance_status',
+      notificationKey: notificationKey,
+      data: {
+        'applianceName': applianceName,
+        'isOn': isOn.toString(),
+        if (cost != null) 'cost': cost.toString(),
+      },
+      preventDuplicates: true,
+    );
+  }
+
+  /// Send goal achievement notification
+  Future<void> sendGoalAchievementNotification({
+    required String achievementType,
+    required String message,
+  }) async {
+    final notificationKey =
+        'goal_achievement_${achievementType}_${DateTime.now().toIso8601String().split('T')[0]}'; // Per day
+
+    await sendNotification(
+      title: 'Goal Achieved! 🎉',
+      body: message,
+      type: 'goal_achievement',
+      notificationKey: notificationKey,
+      data: {'achievementType': achievementType},
+    );
+  }
+
+  /// Send daily summary notification
+  Future<void> sendDailySummaryNotification({
+    required double totalCost,
+    required double totalKwh,
+    required double targetCost,
+    required double targetKwh,
+  }) async {
+    final costPercentage = (totalCost / targetCost * 100).toStringAsFixed(1);
+    String message;
+    if (totalCost <= targetCost * 0.8) {
+      message =
+          'Great job! You used ₱${totalCost.toStringAsFixed(2)} ($costPercentage% of target)';
+    } else if (totalCost <= targetCost) {
+      message =
+          'Good progress! You used ₱${totalCost.toStringAsFixed(2)} ($costPercentage% of target)';
+    } else {
+      message =
+          'You exceeded your target by ₱${(totalCost - targetCost).toStringAsFixed(2)}';
+    }
+
+    final notificationKey =
+        'daily_summary_${DateTime.now().toIso8601String().split('T')[0]}'; // Per day
+
+    await sendNotification(
+      title: 'Daily Energy Summary',
+      body: message,
+      type: 'daily_summary',
+      notificationKey: notificationKey,
+      data: {
+        'totalCost': totalCost.toString(),
+        'totalKwh': totalKwh.toString(),
+        'targetCost': targetCost.toString(),
+        'targetKwh': targetKwh.toString(),
+      },
+    );
+  }
+
+  /// Handle notification click for different types
+  void _handleNotificationClick(String? type, Map<String, dynamic>? data) {
+    if (type == null) return;
+
+    switch (type) {
+      case 'chat_message':
+        final chatId = data?['chatId'] as String?;
+        if (chatId != null) {
+          appRouter.go('/supportChat');
+        }
+        break;
+      case 'rate_update':
+        // Navigate to settings or home
+        appRouter.go('/home');
+        break;
+      case 'appliance_status':
+        // Navigate to monitoring
+        appRouter.go('/home?tab=1');
+        break;
+      case 'goal_achievement':
+        // Navigate to goals
+        appRouter.go('/home?tab=2');
+        break;
+      case 'daily_summary':
+        // Navigate to home
+        appRouter.go('/home');
+        break;
+      default:
+        AppLogger.d('[OneSignalService] Unknown notification type: $type');
     }
   }
 }

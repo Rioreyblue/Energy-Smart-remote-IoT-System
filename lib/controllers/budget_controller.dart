@@ -47,7 +47,9 @@ class BudgetController with ChangeNotifier {
   DateTime? lastAlertGeneratedAt;
   String? lastAlertGeneratedType;
   DateTime? snoozedUntil;
-  bool alertsStopped = false; // Flag to track if alerts are stopped
+  bool alertsStopped = false; // Flag to track if alerts are permanently stopped
+  bool alertsDismissed =
+      false; // Flag to track if alerts are temporarily dismissed (auto-resumes when threshold reached again)
 
   // Baseline kWh used when budget was set/edited (for resetting consumed budget)
   double baselineKwhUsed = 0.0;
@@ -101,6 +103,7 @@ class BudgetController with ChangeNotifier {
             budgetData['lastAlertGeneratedType'] as String?;
         snoozedUntil = budgetData['snoozedUntil'] as DateTime?;
         alertsStopped = budgetData['alertsStopped'] ?? false;
+        alertsDismissed = budgetData['alertsDismissed'] ?? false;
       }
 
       // Load current power rate from Firestore
@@ -208,7 +211,7 @@ class BudgetController with ChangeNotifier {
     }
   }
 
-  /// Refresh alert states (snooze/stop) from Firestore
+  /// Refresh alert states (snooze/stop/dismiss) from Firestore
   /// This ensures we have the latest state when checking for notifications
   Future<void> _refreshAlertStates() async {
     try {
@@ -216,6 +219,7 @@ class BudgetController with ChangeNotifier {
       if (budgetData != null) {
         snoozedUntil = budgetData['snoozedUntil'] as DateTime?;
         alertsStopped = budgetData['alertsStopped'] ?? false;
+        alertsDismissed = budgetData['alertsDismissed'] ?? false;
       }
     } catch (e) {
       AppLogger.w('[BudgetController] Error refreshing alert states: $e');
@@ -266,15 +270,26 @@ class BudgetController with ChangeNotifier {
       // Refresh alert states from Firestore to ensure we have latest snooze/stop status
       await _refreshAlertStates();
 
-      // Check if alerts are stopped - if so, skip all notifications (fully override loop)
+      // Check if alerts are permanently stopped - if so, skip all notifications
       if (alertsStopped) {
         AppLogger.i(
-          '[BudgetController] Alerts stopped by user - notification loop fully disabled',
+          '[BudgetController] Alerts permanently stopped by user - notification loop fully disabled',
         );
         return;
       }
 
-      // Check if alerts are snoozed - if so, skip notifications until snooze expires (fully override loop)
+      // Check if alerts are temporarily dismissed
+      // Note: If threshold is reached, ThresholdAlertService.triggerAlert will auto-resume
+      // by clearing the dismissed flag, so we allow the notification to proceed
+      if (alertsDismissed && usedPercent < thresholdPercentage) {
+        AppLogger.i(
+          '[BudgetController] Alerts dismissed (temporary pause) - skipping notification. '
+          'Will auto-resume when threshold is reached again.',
+        );
+        return;
+      }
+
+      // Check if alerts are snoozed - if so, skip notifications until snooze expires
       if (snoozedUntil != null && DateTime.now().isBefore(snoozedUntil!)) {
         AppLogger.i(
           '[BudgetController] Alerts snoozed until ${snoozedUntil!.toIso8601String()} - notification loop paused',

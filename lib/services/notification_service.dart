@@ -1,14 +1,12 @@
 import 'dart:async';
-import 'dart:typed_data';
-import 'package:flutter/material.dart';
-import 'package:awesome_notifications/awesome_notifications.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../utils/app_logger.dart';
-import '../utils/app_router.dart';
 import 'threshold_alert_service.dart';
+import 'onesignal_service.dart';
 
-/// Service for managing local notifications.
+/// Service for managing notifications via OneSignal.
+/// All local notifications are replaced with OneSignal push notifications.
 class NotificationService {
   final FirebaseAuth _auth = FirebaseAuth.instance;
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
@@ -16,28 +14,20 @@ class NotificationService {
 
   String get _userId => _auth.currentUser?.uid ?? '';
 
-  /// Initialize local notification channels.
+  /// Initialize notification service (OneSignal is initialized separately).
   Future<void> initialize({bool requestPermission = true}) async {
     if (_isInitialized) return;
 
     try {
-      if (requestPermission) {
-        await requestPermissions();
+      // Ensure OneSignal is initialized
+      if (!OneSignalService.instance.isInitialized) {
+        await OneSignalService.instance.initialize();
       }
 
-      // Initialize Awesome Notifications for local non-critical alerts
-      await _initializeLocalNotifications();
-
-      // Set up AwesomeNotifications action listeners
-      AwesomeNotifications().setListeners(
-        onActionReceivedMethod: _onNotificationActionReceived,
-        onNotificationCreatedMethod: _onNotificationCreated,
-        onNotificationDisplayedMethod: _onNotificationDisplayed,
-        onDismissActionReceivedMethod: _onNotificationDismissed,
-      );
-
       _isInitialized = true;
-      AppLogger.i('[NotificationService] Local notifications initialized');
+      AppLogger.i(
+        '[NotificationService] Notification service initialized with OneSignal',
+      );
     } catch (e) {
       AppLogger.e('[NotificationService] Error initializing notifications: $e');
     }
@@ -49,231 +39,15 @@ class NotificationService {
     }
   }
 
-  /// Initialize Awesome Notifications for local non-critical alerts
-  Future<void> _initializeLocalNotifications() async {
-    await AwesomeNotifications().initialize('resource://drawable/update_icon', [
-      NotificationChannel(
-        channelKey: 'appliance_status',
-        channelName: 'Appliance Status',
-        channelDescription: 'Notifications for appliance status changes',
-        defaultColor: const Color(0xFFF39C12),
-        ledColor: const Color(0xFFF39C12),
-        playSound: false,
-        enableVibration: false,
-        importance: NotificationImportance.Low,
-      ),
-      NotificationChannel(
-        channelKey: 'chat_messages',
-        channelName: 'Chat Messages',
-        channelDescription: 'Notifications for support chat conversations',
-        defaultColor: const Color(0xFF3498DB),
-        ledColor: const Color(0xFF3498DB),
-        playSound: true,
-        enableVibration: true,
-        importance: NotificationImportance.High,
-      ),
-      NotificationChannel(
-        channelKey: 'rate_updates',
-        channelName: 'Power Rate Updates',
-        channelDescription: 'Notifications when power rates are updated',
-        defaultColor: const Color(0xFF27AE60),
-        ledColor: const Color(0xFF27AE60),
-        playSound: true,
-        enableVibration: true,
-        importance: NotificationImportance.High,
-      ),
-      NotificationChannel(
-        channelKey: 'budget_alerts',
-        channelName: 'Budget Alerts',
-        channelDescription: 'Critical alerts for budget threshold reached',
-        defaultColor: const Color(0xFFE74C3C),
-        ledColor: const Color(0xFFE74C3C),
-        playSound: true,
-        enableVibration: true,
-        vibrationPattern: Int64List.fromList([0, 1200, 400, 1200, 400, 1200]),
-        importance: NotificationImportance.High,
-        criticalAlerts: true,
-      ),
-      NotificationChannel(
-        channelKey: 'threshold_alerts',
-        channelName: 'Threshold Alerts',
-        channelDescription: 'Persistent alerts when usage exceeds thresholds',
-        defaultColor: const Color(0xFFE74C3C),
-        ledColor: const Color(0xFFE74C3C),
-        playSound: true,
-        enableVibration: true,
-        importance: NotificationImportance.Max,
-        criticalAlerts: true,
-        locked: true,
-        vibrationPattern: Int64List.fromList([
-          0,
-          1800,
-          600,
-          1800,
-          600,
-          1800,
-          600,
-          1800,
-          600,
-          1800,
-          600,
-        ]),
-        defaultRingtoneType: DefaultRingtoneType.Alarm,
-        defaultPrivacy: NotificationPrivacy.Public,
-      ),
-    ], debug: true);
-
-    await ThresholdAlertService.instance.ensureChannelReady();
-  }
-
-  /// Request notification permissions
+  /// Request notification permissions (delegated to OneSignal).
   Future<void> requestPermissions() async {
     try {
-      final localAllowed = await AwesomeNotifications().isNotificationAllowed();
-      if (!localAllowed) {
-        await AwesomeNotifications().requestPermissionToSendNotifications(
-          channelKey: 'threshold_alerts',
-        );
+      if (!OneSignalService.instance.isInitialized) {
+        await OneSignalService.instance.initialize();
       }
-      AppLogger.i('[NotificationService] Notification permission granted');
+      AppLogger.i('[NotificationService] Notification permission requested');
     } catch (e) {
       AppLogger.e('[NotificationService] Error requesting permissions: $e');
-    }
-  }
-
-  /// Handle AwesomeNotifications action received (tap or button)
-  @pragma('vm:entry-point')
-  static Future<void> _onNotificationActionReceived(
-    ReceivedAction receivedAction,
-  ) async {
-    try {
-      final payload = receivedAction.payload;
-      if (payload == null || payload.isEmpty) return;
-
-      final type = payload['type'];
-      final buttonKey = receivedAction.buttonKeyPressed;
-      final alertId = payload['alertId'];
-
-      // Allow threshold alert service to handle action buttons.
-      await ThresholdAlertService.instance.handleAction(receivedAction);
-
-      AppLogger.i(
-        '[NotificationService] AwesomeNotification action received: type=$type, buttonKey=$buttonKey, alertId=$alertId',
-      );
-
-      // Handle budget alert actions
-      if (type == 'budget_alert') {
-        final buttonKey = receivedAction.buttonKeyPressed;
-        // Get instance to call non-static methods
-        final instance = NotificationService();
-
-        // Handle action button clicks
-        if (buttonKey == 'DISMISS') {
-          AppLogger.i(
-            '[NotificationService] Dismiss button clicked for budget alert',
-          );
-          // Dismiss notification and stop vibration
-          // _handleDismissAction will cancel all budget alert notifications
-          await instance._handleDismissAction(alertId);
-          // Also dismiss this specific notification
-          await AwesomeNotifications().dismiss(receivedAction.id!);
-          return;
-        } else if (buttonKey == 'PROCEED') {
-          AppLogger.i(
-            '[NotificationService] Proceed button clicked for budget alert',
-          );
-          // Proceed - continue notifications, don't dismiss
-          await instance._handleProceedAction(alertId);
-          // Keep notification active (don't dismiss)
-          return;
-        } else if (buttonKey == 'VIEW_GOALS' || buttonKey.isEmpty) {
-          // View Goals button or notification body tapped
-          AppLogger.i(
-            '[NotificationService] Navigate to goals from local notification',
-          );
-          // Navigate to Goals page (tab index 2)
-          appRouter.go('/home?tab=2');
-          return;
-        }
-      }
-
-      if (type == 'threshold_alert') {
-        final button = receivedAction.buttonKeyPressed;
-        if (button.isEmpty) {
-          AppLogger.i(
-            '[NotificationService] Threshold alert tapped - navigating to goals tab.',
-          );
-          appRouter.go('/home?tab=2');
-        }
-        return;
-      }
-
-      if (type == 'chat_message') {
-        AppLogger.i(
-          '[NotificationService] Chat notification tapped - navigating to support chat.',
-        );
-        appRouter.go('/supportChat');
-        return;
-      }
-    } catch (e) {
-      AppLogger.e(
-        '[NotificationService] Error handling AwesomeNotification action: $e',
-      );
-    }
-  }
-
-  /// Handle AwesomeNotifications notification created
-  @pragma('vm:entry-point')
-  static Future<void> _onNotificationCreated(
-    ReceivedNotification receivedNotification,
-  ) async {
-    AppLogger.d(
-      '[NotificationService] Notification created: ${receivedNotification.id}',
-    );
-  }
-
-  /// Handle AwesomeNotifications notification displayed
-  @pragma('vm:entry-point')
-  static Future<void> _onNotificationDisplayed(
-    ReceivedNotification receivedNotification,
-  ) async {
-    AppLogger.d(
-      '[NotificationService] Notification displayed: ${receivedNotification.id}',
-    );
-  }
-
-  /// Handle AwesomeNotifications notification dismissed
-  @pragma('vm:entry-point')
-  static Future<void> _onNotificationDismissed(
-    ReceivedAction receivedAction,
-  ) async {
-    AppLogger.d(
-      '[NotificationService] Notification dismissed: ${receivedAction.id}',
-    );
-  }
-
-  /// Handle "Proceed" action button click
-  Future<void> _handleProceedAction(String? alertId) async {
-    try {
-      AppLogger.i(
-        '[NotificationService] Proceed action clicked for alert: $alertId',
-      );
-      await ThresholdAlertService.instance.resetState();
-    } catch (e) {
-      AppLogger.e('[NotificationService] Error handling proceed action: $e');
-    }
-  }
-
-  /// Handle "Dismiss" action button click
-  Future<void> _handleDismissAction(String? alertId) async {
-    try {
-      AppLogger.i(
-        '[NotificationService] Dismiss action clicked for alert: $alertId',
-      );
-
-      await ThresholdAlertService.instance.stopAlert();
-    } catch (e) {
-      AppLogger.e('[NotificationService] Error handling dismiss action: $e');
     }
   }
 
@@ -287,65 +61,64 @@ class NotificationService {
     await ThresholdAlertService.instance.resetState();
   }
 
-  /// Send critical alert (remote push notification placeholder).
-  /// Note: Critical remote alerts are dispatched by backend services.
+  /// Send critical alert via OneSignal.
   Future<void> sendCriticalAlert({
     required String title,
     required String body,
     Map<String, dynamic>? data,
   }) async {
     try {
-      // This method is for local testing only.
-      AppLogger.i('[NotificationService] Critical alert would be sent: $title');
+      await OneSignalService.instance.sendNotification(
+        title: title,
+        body: body,
+        type: 'critical_alert',
+        data: data,
+        notificationKey: 'critical_${DateTime.now().millisecondsSinceEpoch}',
+        preventDuplicates: false, // Critical alerts should always be sent
+      );
+      AppLogger.i('[NotificationService] Critical alert sent: $title');
     } catch (e) {
       AppLogger.e('[NotificationService] Error sending critical alert: $e');
     }
   }
 
-  /// Send local notification for non-critical alerts
+  /// Send local notification for non-critical alerts (via OneSignal).
   Future<void> sendLocalNotification({
     required String title,
     required String body,
     Map<String, dynamic>? payload,
   }) async {
     try {
-      await AwesomeNotifications().createNotification(
-        content: NotificationContent(
-          id: DateTime.now().millisecondsSinceEpoch.remainder(100000),
-          channelKey: 'appliance_status',
-          title: title,
-          body: body,
-          payload: payload?.map((k, v) => MapEntry(k, v.toString())),
-          category: NotificationCategory.Status,
-          icon: 'resource://drawable/update_icon',
-          largeIcon: 'resource://drawable/update_icon',
-        ),
+      await OneSignalService.instance.sendNotification(
+        title: title,
+        body: body,
+        type: 'status',
+        data: payload,
+        notificationKey: 'status_${DateTime.now().millisecondsSinceEpoch}',
       );
     } catch (e) {
       AppLogger.e('[NotificationService] Error sending local notification: $e');
     }
   }
 
-  /// Send appliance status notification (local - non-critical)
+  /// Send appliance status notification via OneSignal.
   Future<void> sendApplianceStatusNotification({
     required String applianceName,
     required bool isOn,
     required double? cost,
   }) async {
     try {
-      final status = isOn ? 'turned ON' : 'turned OFF';
-      final costText = cost != null ? ' (₱${cost.toStringAsFixed(2)})' : '';
-
-      await sendLocalNotification(
-        title: 'Appliance $status',
-        body: '$applianceName has been $status$costText',
+      await OneSignalService.instance.sendApplianceStatusNotification(
+        applianceName: applianceName,
+        isOn: isOn,
+        cost: cost,
       );
     } catch (e) {
       AppLogger.e('[NotificationService] Error sending appliance status: $e');
     }
   }
 
-  /// Show chat message notification (local - indicator style).
+  /// Show chat message notification via OneSignal.
   Future<void> showChatMessageNotification({
     required String senderName,
     required String messagePreview,
@@ -353,63 +126,26 @@ class NotificationService {
     String? messageId,
   }) async {
     try {
-      await AwesomeNotifications().createNotification(
-        content: NotificationContent(
-          id: DateTime.now().millisecondsSinceEpoch.remainder(100000),
-          channelKey: 'chat_messages',
-          title: senderName,
-          body: messagePreview,
-          category: NotificationCategory.Message,
-          payload: {
-            'type': 'chat_message',
-            'chatId': chatId,
-            if (messageId != null) 'messageId': messageId,
-          },
-          icon: 'resource://drawable/update_icon',
-          largeIcon: 'resource://drawable/update_icon',
-        ),
+      await OneSignalService.instance.sendChatNotification(
+        senderName: senderName,
+        messagePreview: messagePreview,
+        chatId: chatId,
+        messageId: messageId,
       );
     } catch (e) {
       AppLogger.e('[NotificationService] Error showing chat notification: $e');
     }
   }
 
-  /// Show power rate update notification (local).
+  /// Show power rate update notification via OneSignal.
   Future<void> showRateUpdateNotification({
     required double oldRate,
     required double newRate,
   }) async {
     try {
-      final rateChange = newRate - oldRate;
-      final changeText =
-          rateChange > 0
-              ? 'increased'
-              : rateChange < 0
-              ? 'decreased'
-              : 'updated';
-      final changeIcon =
-          rateChange > 0
-              ? '📈'
-              : rateChange < 0
-              ? '📉'
-              : '📊';
-
-      await AwesomeNotifications().createNotification(
-        content: NotificationContent(
-          id: DateTime.now().millisecondsSinceEpoch.remainder(100000),
-          channelKey: 'rate_updates',
-          title: '$changeIcon Power Rate Updated',
-          body:
-              'Rate $changeText from ₱${oldRate.toStringAsFixed(4)}/kWh to ₱${newRate.toStringAsFixed(4)}/kWh',
-          category: NotificationCategory.Status,
-          payload: {
-            'type': 'rate_update',
-            'oldRate': oldRate.toString(),
-            'newRate': newRate.toString(),
-          },
-          icon: 'resource://drawable/update_icon',
-          largeIcon: 'resource://drawable/update_icon',
-        ),
+      await OneSignalService.instance.sendRateUpdateNotification(
+        oldRate: oldRate,
+        newRate: newRate,
       );
       AppLogger.i(
         '[NotificationService] Rate update notification shown: ₱$oldRate → ₱$newRate',
@@ -421,19 +157,22 @@ class NotificationService {
     }
   }
 
-  /// Send goal achievement notification (local - non-critical)
+  /// Send goal achievement notification via OneSignal.
   Future<void> sendGoalAchievementNotification({
     required String achievementType,
     required String message,
   }) async {
     try {
-      await sendLocalNotification(title: 'Goal Achieved! 🎉', body: message);
+      await OneSignalService.instance.sendGoalAchievementNotification(
+        achievementType: achievementType,
+        message: message,
+      );
     } catch (e) {
       AppLogger.e('[NotificationService] Error sending goal achievement: $e');
     }
   }
 
-  /// Send daily summary notification (local - non-critical)
+  /// Send daily summary notification via OneSignal.
   Future<void> sendDailySummaryNotification({
     required double totalCost,
     required double totalKwh,
@@ -441,27 +180,18 @@ class NotificationService {
     required double targetKwh,
   }) async {
     try {
-      final costPercentage = (totalCost / targetCost * 100).toStringAsFixed(1);
-
-      String message;
-      if (totalCost <= targetCost * 0.8) {
-        message =
-            'Great job! You used ₱${totalCost.toStringAsFixed(2)} ($costPercentage% of target)';
-      } else if (totalCost <= targetCost) {
-        message =
-            'Good progress! You used ₱${totalCost.toStringAsFixed(2)} ($costPercentage% of target)';
-      } else {
-        message =
-            'You exceeded your target by ₱${(totalCost - targetCost).toStringAsFixed(2)}';
-      }
-
-      await sendLocalNotification(title: 'Daily Energy Summary', body: message);
+      await OneSignalService.instance.sendDailySummaryNotification(
+        totalCost: totalCost,
+        totalKwh: totalKwh,
+        targetCost: targetCost,
+        targetKwh: targetKwh,
+      );
     } catch (e) {
       AppLogger.e('[NotificationService] Error sending daily summary: $e');
     }
   }
 
-  /// Send threshold reached notification
+  /// Send threshold reached notification.
   /// Note: Critical alerts should be sent via Cloud Functions
   /// This is kept for backward compatibility but logs a warning
   Future<void> sendThresholdReachedNotification({
@@ -481,7 +211,7 @@ class NotificationService {
     }
   }
 
-  /// Send budget threshold notification with persistent local alert.
+  /// Send budget threshold notification with persistent alert via OneSignal.
   Future<void> sendBudgetThresholdNotification({
     required double consumedCost,
     required double remainingBudget,
@@ -510,57 +240,48 @@ class NotificationService {
         force: bypassDailyCheck,
       );
     } catch (e) {
-      AppLogger.e(
-        '[NotificationService] Error sending local threshold alert: $e',
-      );
+      AppLogger.e('[NotificationService] Error sending threshold alert: $e');
     }
   }
 
-  /// Schedule periodic notifications (local)
+  /// Schedule periodic notifications (not supported via OneSignal REST API).
+  /// For scheduled notifications, use Cloud Functions or backend services.
   Future<void> schedulePeriodicNotifications() async {
     try {
-      // Schedule daily summary at 9 PM
-      await AwesomeNotifications().createNotification(
-        content: NotificationContent(
-          id: 1001,
-          channelKey: 'appliance_status',
-          title: 'Daily Energy Summary',
-          body: 'Check your energy usage for today',
-          category: NotificationCategory.Reminder,
-          icon: 'resource://drawable/update_icon',
-          largeIcon: 'resource://drawable/update_icon',
-        ),
-        schedule: NotificationCalendar(
-          hour: 21,
-          minute: 0,
-          second: 0,
-          repeats: true,
-        ),
+      AppLogger.w(
+        '[NotificationService] Scheduled notifications should be handled via backend services or Cloud Functions.',
       );
     } catch (e) {
       AppLogger.e('[NotificationService] Error scheduling notifications: $e');
     }
   }
 
-  /// Cancel all notifications
+  /// Cancel all notifications (not directly supported by OneSignal).
+  /// Notifications are typically cancelled server-side or expire naturally.
   Future<void> cancelAllNotifications() async {
     try {
-      await AwesomeNotifications().cancelAll();
+      AppLogger.d(
+        '[NotificationService] OneSignal notifications cannot be cancelled directly. '
+        'They expire naturally or are cancelled server-side.',
+      );
     } catch (e) {
       AppLogger.e('[NotificationService] Error canceling notifications: $e');
     }
   }
 
-  /// Cancel specific notification
+  /// Cancel specific notification (not directly supported by OneSignal).
   Future<void> cancelNotification(int id) async {
     try {
-      await AwesomeNotifications().cancel(id);
+      AppLogger.d(
+        '[NotificationService] OneSignal notifications cannot be cancelled directly. '
+        'They expire naturally or are cancelled server-side.',
+      );
     } catch (e) {
       AppLogger.e('[NotificationService] Error canceling notification: $e');
     }
   }
 
-  /// Get notification history
+  /// Get notification history from Firestore.
   Future<List<Map<String, dynamic>>> getNotificationHistory() async {
     try {
       final query =
@@ -588,12 +309,15 @@ class NotificationService {
     }
   }
 
-  /// Test notification (local)
+  /// Test notification via OneSignal.
   Future<void> sendTestNotification() async {
     try {
-      await sendLocalNotification(
+      await OneSignalService.instance.sendNotification(
         title: 'Test Notification',
         body: 'This is a test notification from Energy Smart',
+        type: 'test',
+        notificationKey: 'test_${DateTime.now().millisecondsSinceEpoch}',
+        preventDuplicates: false,
       );
       AppLogger.i('[NotificationService] Test notification sent');
     } catch (e) {
@@ -602,29 +326,28 @@ class NotificationService {
     }
   }
 
-  /// Check notification permissions
+  /// Check notification permissions (delegated to OneSignal).
   Future<bool> areNotificationsEnabled() async {
     try {
-      return await AwesomeNotifications().isNotificationAllowed();
+      return OneSignalService.instance.isInitialized;
     } catch (e) {
       AppLogger.e('[NotificationService] Error checking permissions: $e');
       return false;
     }
   }
 
-  /// Open notification settings
+  /// Open notification settings (delegated to OneSignal).
   Future<void> openNotificationSettings() async {
     try {
-      final allowed = await AwesomeNotifications().isNotificationAllowed();
-      if (!allowed) {
-        await AwesomeNotifications().requestPermissionToSendNotifications();
+      if (!OneSignalService.instance.isInitialized) {
+        await OneSignalService.instance.initialize();
       }
     } catch (e) {
       AppLogger.e('[NotificationService] Error opening settings: $e');
     }
   }
 
-  /// Enable threshold notifications
+  /// Enable threshold notifications.
   Future<void> enableThresholdNotifications() async {
     try {
       await _firestore
@@ -644,7 +367,7 @@ class NotificationService {
     }
   }
 
-  /// Disable threshold notifications
+  /// Disable threshold notifications.
   Future<void> disableThresholdNotifications() async {
     try {
       await _firestore
@@ -664,7 +387,7 @@ class NotificationService {
     }
   }
 
-  /// Legacy method name for backward compatibility
+  /// Legacy method name for backward compatibility.
   @Deprecated('Use initialize instead')
   Future<void> configureAwesomeNotifications() async {
     await initialize();

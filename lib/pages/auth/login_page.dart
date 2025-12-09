@@ -222,11 +222,24 @@ class _NewLoginPageState extends State<NewLoginPage> {
 
         if (!mounted) return;
 
-        // Check if onboarding was seen - if not, show onboarding first
+        // Check if user is truly new (just created) vs existing
+        // New users have empty mobileNumber and haven't completed onboarding
+        final isNewUser =
+            user.mobileNumber.isEmpty &&
+            user.energyProvider.isEmpty &&
+            user.address.isEmpty;
+
+        // Check if onboarding was seen
         final prefs = await SharedPreferences.getInstance();
         final seenOnboarding = prefs.getBool('seen_onboarding') ?? false;
 
-        if (!seenOnboarding) {
+        // For existing users, mark onboarding as seen to prevent future issues
+        if (!isNewUser && !seenOnboarding) {
+          await prefs.setBool('seen_onboarding', true);
+        }
+
+        // Only show onboarding for truly new users who haven't seen it
+        if (isNewUser && !seenOnboarding) {
           // New user - navigate to onboarding first
           if (mounted) {
             context.go('/onboarding');
