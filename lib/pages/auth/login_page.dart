@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:iconsax/iconsax.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:exercise_app/constants/constant.dart';
 import 'package:exercise_app/services/auth_service.dart';
 import 'package:exercise_app/widgets/app_snackbar.dart';
@@ -165,24 +166,24 @@ class _NewLoginPageState extends State<NewLoginPage> {
           final phoneAuthService = context.read<PhoneAuthService>();
           phoneAuthService.reset();
 
+          // Send OTP to user's phone number
           await _authService.sendPhoneVerificationOtp(user.mobileNumber);
 
           if (mounted) {
-            AppSnackbar.showInfo(
+            AppSnackbar.showSuccess(
               context,
-              'Please verify your phone number. OTP sent to ${user.mobileNumber}',
+              'OTP sent to ${user.mobileNumber}. Please enter the code to verify.',
             );
+            // Navigate to root - AuthWrapper will show verification page
+            context.go('/');
           }
         } catch (e) {
           if (mounted) {
             AppSnackbar.showWarning(
               context,
-              'Please verify your phone number. Failed to send OTP: ${e.toString()}',
+              'Failed to send OTP: ${e.toString()}. Please enter your phone number.',
             );
-          }
-        } finally {
-          if (mounted) {
-            // Navigate to SMS entry page for verification
+            // Navigate to SMS entry page on error
             context.go('/sms');
           }
         }
@@ -221,6 +222,19 @@ class _NewLoginPageState extends State<NewLoginPage> {
 
         if (!mounted) return;
 
+        // Check if onboarding was seen - if not, show onboarding first
+        final prefs = await SharedPreferences.getInstance();
+        final seenOnboarding = prefs.getBool('seen_onboarding') ?? false;
+
+        if (!seenOnboarding) {
+          // New user - navigate to onboarding first
+          if (mounted) {
+            context.go('/onboarding');
+            return;
+          }
+        }
+
+        // Existing user or onboarding completed - proceed with verification
         // Always require phone verification after Google sign in
         final phoneAuthService = context.read<PhoneAuthService>();
         phoneAuthService.reset();
@@ -230,23 +244,24 @@ class _NewLoginPageState extends State<NewLoginPage> {
 
         if (hasPhoneNumber) {
           try {
+            // Send OTP to user's phone number
             await _authService.sendPhoneVerificationOtp(user.mobileNumber);
 
             if (mounted) {
-              AppSnackbar.showInfo(
+              AppSnackbar.showSuccess(
                 context,
-                'Please verify your phone number. OTP sent to ${user.mobileNumber}',
+                'OTP sent to ${user.mobileNumber}. Please enter the code to verify.',
               );
+              // Navigate to root - AuthWrapper will show verification page
+              context.go('/');
             }
           } catch (e) {
             if (mounted) {
               AppSnackbar.showWarning(
                 context,
-                'Please verify your phone number. Failed to send OTP: ${e.toString()}',
+                'Failed to send OTP: ${e.toString()}. Please enter your phone number.',
               );
-            }
-          } finally {
-            if (mounted) {
+              // Navigate to SMS entry page on error
               context.go('/sms');
             }
           }

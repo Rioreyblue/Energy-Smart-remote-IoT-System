@@ -5,6 +5,7 @@ import 'package:exercise_app/pages/splash/splash_screen.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:go_router/go_router.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:async' show unawaited;
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_auth/firebase_auth.dart';
@@ -43,6 +44,7 @@ import 'services/onesignal_service.dart';
 import 'controllers/chat_notification_controller.dart';
 import 'utils/app_router.dart';
 import 'services/user_status_service.dart';
+import 'services/auth_service.dart';
 
 GoRouter _createRouter() {
   return GoRouter(
@@ -64,13 +66,27 @@ GoRouter _createRouter() {
           GoRoute(
             path: 'home',
             builder: (context, state) => const HomeScreen(),
-            redirect: (context, state) {
+            redirect: (context, state) async {
               final auth = FirebaseAuth.instance;
               // If not authenticated, redirect to root (login)
               if (auth.currentUser == null) {
                 return '/';
               }
-              return null; // Allow route to proceed
+
+              // Strict verification check - user must be fully verified to access home
+              try {
+                final authService = AuthService();
+                final isFullyVerified = await authService.isUserFullyVerified();
+                if (!isFullyVerified) {
+                  // User not fully verified, redirect to verification page
+                  return '/';
+                }
+              } catch (e) {
+                // If verification check fails, redirect to root for safety
+                return '/';
+              }
+
+              return null; // Allow route to proceed only if fully verified
             },
           ),
           GoRoute(
@@ -100,6 +116,26 @@ GoRouter _createRouter() {
           GoRoute(
             path: 'onboarding',
             builder: (context, state) => const OnboardingPage(),
+            redirect: (context, state) async {
+              // Check if onboarding was already seen
+              final prefs = await SharedPreferences.getInstance();
+              final seenOnboarding = prefs.getBool('seen_onboarding') ?? false;
+
+              // If already seen, redirect based on auth status
+              if (seenOnboarding) {
+                final auth = FirebaseAuth.instance;
+                if (auth.currentUser != null) {
+                  // User authenticated - go to root (will show verification/home)
+                  return '/';
+                } else {
+                  // Not authenticated - go to login
+                  return '/login';
+                }
+              }
+
+              // Not seen yet - allow onboarding to show
+              return null;
+            },
           ),
           GoRoute(
             path: 'sms',

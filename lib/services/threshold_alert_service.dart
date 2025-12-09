@@ -2,6 +2,8 @@ import 'dart:async';
 import 'dart:typed_data';
 
 import 'package:awesome_notifications/awesome_notifications.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -25,7 +27,7 @@ class ThresholdAlertService {
   static const String _prefsLastThresholdKey =
       'threshold_alert_last_threshold_value';
   static const String snoozePrefsKey = 'threshold_alert_snoozed_until';
-  static const String _prefsStoppedKey =
+  static const String stoppedPrefsKey =
       'threshold_alert_stopped'; // Flag to stop notification loop
 
   static const Duration _cooldown = Duration(minutes: 5);
@@ -93,7 +95,7 @@ class ThresholdAlertService {
     final prefs = await SharedPreferences.getInstance();
 
     // Check if alerts were stopped by user
-    final isStopped = prefs.getBool(_prefsStoppedKey) ?? false;
+    final isStopped = prefs.getBool(stoppedPrefsKey) ?? false;
     if (isStopped && !force) {
       AppLogger.i(
         '[ThresholdAlertService] Alerts stopped by user - notification loop disabled.',
@@ -132,8 +134,12 @@ class ThresholdAlertService {
     await _startNativeAudio();
     await _clearSnooze();
 
-    // Use OneSignal for threshold alerts with merged actions (snooze, dismiss, stop)
-    if (OneSignalService.instance.isInitialized) {
+    final useOneSignalWithActions =
+        OneSignalService.instance.isInitialized &&
+        OneSignalService.instance.hasRestApiKeyConfigured;
+
+    // Use OneSignal only when REST key is configured (buttons require it)
+    if (useOneSignalWithActions) {
       await OneSignalService.instance.sendThresholdAlert(
         title: '⚠️ Threshold Reached',
         body:
@@ -159,7 +165,7 @@ class ThresholdAlertService {
         },
       );
     } else {
-      // Fallback to AwesomeNotifications if OneSignal is not initialized
+      // Fallback to AwesomeNotifications WITH action buttons (snooze, dismiss, stop)
       await AwesomeNotifications().createNotification(
         content: NotificationContent(
           id: _notificationId,
@@ -256,7 +262,7 @@ class ThresholdAlertService {
     await prefs.remove(_prefsLastThresholdKey);
     await prefs.setBool(_prefsActiveKey, false);
     if (clearStopped) {
-      await prefs.setBool(_prefsStoppedKey, false);
+      await prefs.setBool(stoppedPrefsKey, false);
     }
   }
 
@@ -301,28 +307,74 @@ class ThresholdAlertService {
     final prefs = await SharedPreferences.getInstance();
 
     // Set stopped flag to prevent future notifications
-    await prefs.setBool(_prefsStoppedKey, true);
+    await prefs.setBool(stoppedPrefsKey, true);
 
     await _clearSnooze();
     await stopAlert(clearCooldown: true);
     await resetState();
+    await _markAlertsStoppedInFirestore();
 
     AppLogger.i(
       '[ThresholdAlertService] Alert stopped by user - notification loop disabled.',
     );
   }
 
+  /// Allows other services (e.g., OneSignal callbacks) to persist stop flag
+  Future<void> markStoppedFromRemote() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setBool(stoppedPrefsKey, true);
+      await _clearSnooze();
+      await _markAlertsStoppedInFirestore();
+      AppLogger.i(
+        '[ThresholdAlertService] Stop flag persisted from remote action.',
+      );
+    } catch (e) {
+      AppLogger.w(
+        '[ThresholdAlertService] Failed to persist stop flag from remote: $e',
+      );
+    }
+  }
+
+  /// Persist stopped state in Firestore so background checks also skip
+  Future<void> _markAlertsStoppedInFirestore() async {
+    try {
+      final user = FirebaseAuth.instance.currentUser;
+      if (user == null) return;
+
+      final firestore = FirebaseFirestore.instance;
+      await firestore
+          .collection('users')
+          .doc(user.uid)
+          .collection('budget_target')
+          .doc('current')
+          .set({
+            'alertsStopped': true,
+            'alertsStoppedAt': FieldValue.serverTimestamp(),
+            'snoozedUntil': null,
+          }, SetOptions(merge: true));
+
+      AppLogger.i(
+        '[ThresholdAlertService] alertsStopped flag stored in Firestore',
+      );
+    } catch (e) {
+      AppLogger.w(
+        '[ThresholdAlertService] Failed to persist alertsStopped to Firestore: $e',
+      );
+    }
+  }
+
   /// Re-enable alerts after they were stopped
   Future<void> enableAlerts() async {
     final prefs = await SharedPreferences.getInstance();
-    await prefs.setBool(_prefsStoppedKey, false);
+    await prefs.setBool(stoppedPrefsKey, false);
     AppLogger.i('[ThresholdAlertService] Alerts re-enabled.');
   }
 
   /// Check if alerts are currently stopped
   Future<bool> isAlertsStopped() async {
     final prefs = await SharedPreferences.getInstance();
-    return prefs.getBool(_prefsStoppedKey) ?? false;
+    return prefs.getBool(stoppedPrefsKey) ?? false;
   }
 
   Future<void> _setSnoozedUntil(DateTime until) async {

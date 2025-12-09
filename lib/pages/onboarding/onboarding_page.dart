@@ -72,10 +72,21 @@ class _OnboardingPageState extends State<OnboardingPage> {
       }
 
       if (!mounted) return;
+
+      // If callback provided, use it
       if (widget.onCompleted != null) {
         await widget.onCompleted!.call();
       } else {
-        context.go('/login');
+        // No callback - check if user is authenticated
+        final user = _auth.currentUser;
+        if (user != null) {
+          // User is authenticated - proceed to verification/home
+          // Navigate to root - AuthWrapper will handle routing based on verification status
+          context.go('/');
+        } else {
+          // Not authenticated - go to login
+          context.go('/login');
+        }
       }
     } catch (e) {
       if (!mounted) return;

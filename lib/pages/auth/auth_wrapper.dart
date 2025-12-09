@@ -27,16 +27,14 @@ class _AuthWrapperState extends State<AuthWrapper> {
 
   Future<void> _checkAuthState() async {
     try {
-      // Onboarding gate
-      final prefs = await SharedPreferences.getInstance();
-      final seen = prefs.getBool('seen_onboarding') ?? false;
-      _showOnboarding = !seen;
-
       // Check if user is logged in via SharedPreferences
       await _authService.getLoginState();
 
       // Also check Firebase Auth state
       _authService.currentUser;
+
+      // Re-check onboarding status (in case user just signed in)
+      await _checkOnboardingStatus();
 
       setState(() {
         _isLoading = false;
@@ -48,10 +46,48 @@ class _AuthWrapperState extends State<AuthWrapper> {
     }
   }
 
+  /// Check onboarding status - should only show once on fresh install
+  /// This ensures onboarding only appears once, even if auth state changes
+  Future<void> _checkOnboardingStatus() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final seen = prefs.getBool('seen_onboarding') ?? false;
+
+      // Only show onboarding in AuthWrapper if:
+      // 1. It hasn't been seen
+      // 2. User is NOT authenticated (fresh install scenario)
+      // If user is authenticated, they should access onboarding via /onboarding route
+      final user = _authService.currentUser;
+      final shouldShowOnboarding = !seen && user == null;
+
+      if (mounted) {
+        setState(() {
+          _showOnboarding = shouldShowOnboarding;
+        });
+      }
+    } catch (e) {
+      // If error checking, default to not showing onboarding
+      if (mounted) {
+        setState(() {
+          _showOnboarding = false;
+        });
+      }
+    }
+  }
+
   Future<void> _handleOnboardingComplete() async {
     if (!mounted) {
       return;
     }
+
+    // Mark onboarding as seen
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setBool('seen_onboarding', true);
+    } catch (e) {
+      // Log error but continue
+    }
+
     setState(() {
       _showOnboarding = false;
     });
@@ -59,7 +95,23 @@ class _AuthWrapperState extends State<AuthWrapper> {
     if (!mounted) {
       return;
     }
-    context.go('/login');
+
+    // Check if user is authenticated - if yes, proceed to verification/home
+    // If not, go to login
+    final user = _authService.currentUser;
+    if (user != null) {
+      // User is authenticated, check verification status
+      final isFullyVerified = await _authService.isUserFullyVerified();
+      if (isFullyVerified) {
+        context.go('/home');
+      } else {
+        // Not verified, go to root which will show verification page
+        context.go('/');
+      }
+    } else {
+      // Not authenticated, go to login
+      context.go('/login');
+    }
   }
 
   @override
@@ -130,6 +182,17 @@ class _AuthWrapperState extends State<AuthWrapper> {
         }
 
         final isAuthenticated = snapshot.hasData && snapshot.data != null;
+
+        // If user becomes authenticated, hide onboarding (they've already seen it or will see it via /onboarding route)
+        if (isAuthenticated && _showOnboarding) {
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (mounted) {
+              setState(() {
+                _showOnboarding = false;
+              });
+            }
+          });
+        }
 
         // If on a non-auth path, let GoRouter handle it (redirects will protect routes)
         if (!isAuthPath) {

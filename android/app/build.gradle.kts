@@ -6,6 +6,8 @@ plugins {
     id("kotlin-android")
     // The Flutter Gradle Plugin must be applied after the Android and Kotlin Gradle plugins.
     id("dev.flutter.flutter-gradle-plugin")
+    // Note: OneSignal Flutter SDK handles native Android configuration automatically
+    // No manual Gradle plugin needed - the onesignal_flutter package handles it
 }
 
 android {

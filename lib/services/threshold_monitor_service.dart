@@ -134,6 +134,16 @@ class ThresholdMonitorTask {
         }
       }
 
+      // Hard stop flag set from notification action buttons
+      final alertsStoppedLocally =
+          prefs.getBool(ThresholdAlertService.stoppedPrefsKey) ?? false;
+      if (alertsStoppedLocally) {
+        AppLogger.i(
+          '[ThresholdMonitorTask] Alerts stopped locally - skipping notification loop.',
+        );
+        return;
+      }
+
       await ThresholdAlertService.instance.ensureChannelReady(
         fromBackground: true,
       );

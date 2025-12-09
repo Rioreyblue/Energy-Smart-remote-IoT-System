@@ -4,9 +4,9 @@ import 'package:onesignal_flutter/onesignal_flutter.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:http/http.dart' as http;
-import 'package:shared_preferences/shared_preferences.dart';
 import '../utils/app_logger.dart';
 import '../utils/app_router.dart';
+import 'threshold_alert_service.dart';
 
 /// Service for managing OneSignal push notifications
 class OneSignalService {
@@ -30,7 +30,7 @@ class OneSignalService {
     }
 
     try {
-      // Initialize OneSignal
+      // Initialize OneSignal with settings optimized for background delivery
       OneSignal.initialize(_oneSignalAppId);
 
       // Request notification permissions
@@ -182,6 +182,11 @@ class OneSignalService {
   /// Check if OneSignal is initialized
   bool get isInitialized => _initialized;
 
+  /// Whether REST API key is present (required for action buttons)
+  bool get hasRestApiKeyConfigured =>
+      _oneSignalRestApiKey != 'YOUR_REST_API_KEY_HERE' &&
+      _oneSignalRestApiKey.isNotEmpty;
+
   /// Send tags to OneSignal (for user segmentation)
   Future<void> setTags(Map<String, String> tags) async {
     if (!_initialized) {
@@ -247,6 +252,8 @@ class OneSignalService {
     if (_oneSignalRestApiKey != 'YOUR_REST_API_KEY_HERE' &&
         _oneSignalRestApiKey.isNotEmpty) {
       try {
+        // OneSignal REST API expects REST API key in Authorization header
+        // Format: "Basic {REST_API_KEY}" (the key itself, not base64 encoded)
         final response = await http.post(
           Uri.parse('https://onesignal.com/api/v1/notifications'),
           headers: {
@@ -270,20 +277,33 @@ class OneSignalService {
               {'id': 'dismiss', 'text': 'Dismiss'},
               {'id': 'stop', 'text': 'Stop'},
             ],
+            // High priority ensures notification is delivered even when app is closed
             'priority': 10,
+            'ttl':
+                86400, // Time to live: 24 hours (ensures notification isn't lost)
             'sound': 'default',
             'android_channel_id': 'threshold_alerts',
             // Ensure notification works when app is closed
             'android_sound': 'default',
             'ios_sound': 'default',
-            'content_available': true, // Enable background delivery
+            'content_available': true, // Enable background delivery (iOS)
             'mutable_content': true, // Allow notification modification
             // Android-specific settings for background notifications
-            'android_visibility': 1, // Public visibility
+            'android_visibility': 1, // Public visibility (show on lock screen)
             'android_accent_color': 'FFE74C3C', // Red accent for alerts
+            'android_priority':
+                2, // High priority (2 = high, ensures delivery when app closed)
+            'android_led_color': 'FFE74C3C', // LED color for notifications
+            'android_small_icon': 'ic_notification', // Small icon resource name
+            'android_large_icon': 'ic_notification', // Large icon resource name
+            // Ensure notification wakes device and shows on lock screen
+            'android_badge_icon_type': 'LargeIcon',
             // iOS-specific settings
             'ios_badgeType': 'Increase',
             'ios_badgeCount': 1,
+            // Additional settings to ensure delivery
+            'send_after': null, // Send immediately
+            'delayed_option': null, // No delay
           }),
         );
 
@@ -348,13 +368,8 @@ class OneSignalService {
     // This works even when app is closed
     if (actionId == 'stop') {
       try {
-        // Set stopped flag directly in SharedPreferences
-        // This ensures the notification loop stops even if app is closed
-        final prefs = await SharedPreferences.getInstance();
-        await prefs.setBool('threshold_alert_stopped', true);
-        AppLogger.i(
-          '[OneSignalService] Stop action executed - notification loop disabled',
-        );
+        // Persist stop state so background loop halts everywhere
+        await ThresholdAlertService.instance.markStoppedFromRemote();
       } catch (e) {
         AppLogger.e('[OneSignalService] Error setting stopped flag: $e');
       }

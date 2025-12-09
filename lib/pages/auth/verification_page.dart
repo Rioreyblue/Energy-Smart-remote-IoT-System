@@ -51,6 +51,14 @@ class _VerificationPageState extends State<VerificationPage> {
   void initState() {
     super.initState();
     _loadUserData();
+    // Check if OTP was already sent (from login flow)
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final phoneAuth = context.read<PhoneAuthService>();
+      if (widget.verificationType == 'phone' && phoneAuth.isCodeSent) {
+        // OTP already sent, ensure UI reflects this
+        setState(() {});
+      }
+    });
   }
 
   @override
@@ -117,6 +125,13 @@ class _VerificationPageState extends State<VerificationPage> {
         if (user != null) {
           await _authService.updateVerificationAttempts(user.uid);
           AppLogger.i('[VerificationPage] Verification successful');
+
+          // Force reload Firebase user to get latest verification status
+          try {
+            await user.reload();
+          } catch (e) {
+            AppLogger.w('[VerificationPage] Error reloading user: $e');
+          }
         }
 
         if (mounted) {
@@ -133,7 +148,7 @@ class _VerificationPageState extends State<VerificationPage> {
           await _authService.getCurrentUserData();
 
           // Small delay to ensure auth state propagates
-          await Future.delayed(const Duration(milliseconds: 300));
+          await Future.delayed(const Duration(milliseconds: 500));
 
           // Navigate to home once verification completes
           if (mounted) {
@@ -206,7 +221,15 @@ class _VerificationPageState extends State<VerificationPage> {
         elevation: 0,
         leading: IconButton(
           icon: Icon(Iconsax.arrow_left_1, color: AppColor.accentGreen),
-          onPressed: () => context.go('login'),
+          onPressed: () {
+            // Navigate back to previous page, or to /sms if no previous page
+            if (context.canPop()) {
+              context.pop();
+            } else {
+              // If no previous page, go to phone entry page
+              context.go('/sms');
+            }
+          },
         ),
         title: Text(
           'Verify ${widget.verificationType == 'email' ? 'Email' : 'Phone'}',

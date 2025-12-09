@@ -482,8 +482,6 @@ class UsageService {
       }
     }
 
-    final rate = await _getCurrentPowerRate();
-
     // Write to RTDB for live UI
     await _thisMonthRef.set({
       'totalKwh': totalKwh,

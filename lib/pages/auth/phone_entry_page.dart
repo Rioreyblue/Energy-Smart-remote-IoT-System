@@ -92,9 +92,12 @@ class _PhoneEntryPageState extends State<PhoneEntryPage> {
     if (success) {
       AppSnackbar.showSuccess(
         context,
-        'Verification code sent to $phoneNumber.',
+        'Verification code sent to $phoneNumber. Please enter the code to verify.',
       );
-      context.go('/');
+      // Navigate to verification page (root) - it will show phone verification form
+      if (mounted) {
+        context.go('/');
+      }
     } else if (phoneAuth.error != null) {
       AppSnackbar.showError(context, phoneAuth.error!);
     }
