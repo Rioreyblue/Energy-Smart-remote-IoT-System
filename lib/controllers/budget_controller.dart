@@ -7,6 +7,7 @@ import '../services/notification_service.dart';
 import '../services/threshold_monitor_service.dart';
 import '../services/sms_chef_service.dart';
 import '../services/auth_service.dart';
+import '../services/settings_service.dart';
 import '../utils/app_logger.dart';
 
 import 'package:firebase_auth/firebase_auth.dart';
@@ -46,6 +47,7 @@ class BudgetController with ChangeNotifier {
   DateTime? lastAlertGeneratedAt;
   String? lastAlertGeneratedType;
   DateTime? snoozedUntil;
+  bool alertsStopped = false; // Flag to track if alerts are stopped
 
   // Baseline kWh used when budget was set/edited (for resetting consumed budget)
   double baselineKwhUsed = 0.0;
@@ -98,6 +100,7 @@ class BudgetController with ChangeNotifier {
         lastAlertGeneratedType =
             budgetData['lastAlertGeneratedType'] as String?;
         snoozedUntil = budgetData['snoozedUntil'] as DateTime?;
+        alertsStopped = budgetData['alertsStopped'] ?? false;
       }
 
       // Load current power rate from Firestore
@@ -205,6 +208,20 @@ class BudgetController with ChangeNotifier {
     }
   }
 
+  /// Refresh alert states (snooze/stop) from Firestore
+  /// This ensures we have the latest state when checking for notifications
+  Future<void> _refreshAlertStates() async {
+    try {
+      final budgetData = await _firestoreService.getBudgetTarget();
+      if (budgetData != null) {
+        snoozedUntil = budgetData['snoozedUntil'] as DateTime?;
+        alertsStopped = budgetData['alertsStopped'] ?? false;
+      }
+    } catch (e) {
+      AppLogger.w('[BudgetController] Error refreshing alert states: $e');
+    }
+  }
+
   /// Recalculate remaining budget and trigger notifications if threshold reached
   Future<void> _recalculateAndMaybeNotify() async {
     if (totalBudget == 0) {
@@ -245,6 +262,25 @@ class BudgetController with ChangeNotifier {
       AppLogger.d(
         '[BudgetController] Checking threshold: usedPercent=$usedPercent%, threshold=$thresholdPercentage%, alertEnabled=$alertEnabled, notificationSentForToday=$_notificationSentForToday',
       );
+
+      // Refresh alert states from Firestore to ensure we have latest snooze/stop status
+      await _refreshAlertStates();
+
+      // Check if alerts are stopped - if so, skip all notifications (fully override loop)
+      if (alertsStopped) {
+        AppLogger.i(
+          '[BudgetController] Alerts stopped by user - notification loop fully disabled',
+        );
+        return;
+      }
+
+      // Check if alerts are snoozed - if so, skip notifications until snooze expires (fully override loop)
+      if (snoozedUntil != null && DateTime.now().isBefore(snoozedUntil!)) {
+        AppLogger.i(
+          '[BudgetController] Alerts snoozed until ${snoozedUntil!.toIso8601String()} - notification loop paused',
+        );
+        return;
+      }
 
       // Check if threshold has changed - if so, reset notification flag to allow new notification
       if (_lastThresholdThatTriggered != null &&
@@ -583,22 +619,44 @@ class BudgetController with ChangeNotifier {
         return;
       }
 
-      // Get user's phone number from multiple sources
+      // Get user's phone number from multiple sources (check most recent first)
       String? phoneNumber;
 
-      // Try Firebase Auth phone number first
-      final authUser = _auth.currentUser;
-      if (authUser?.phoneNumber != null && authUser!.phoneNumber!.isNotEmpty) {
-        phoneNumber = authUser.phoneNumber;
-        AppLogger.d('[BudgetController] Using phone number from Firebase Auth');
+      // Priority 1: Check profile subcollection first (most up-to-date)
+      try {
+        final settingsService = SettingsService();
+        final profile = await settingsService.getUserProfile();
+        if (profile != null) {
+          final profilePhone = profile['phone'] as String?;
+          if (profilePhone != null && profilePhone.isNotEmpty) {
+            phoneNumber = profilePhone;
+            AppLogger.d(
+              '[BudgetController] Using phone number from profile (most recent)',
+            );
+          }
+        }
+      } catch (e) {
+        AppLogger.w('[BudgetController] Error getting phone from profile: $e');
       }
 
-      // Fallback to user data from AuthService
+      // Priority 2: Fallback to user data from AuthService (UserModel)
       if (phoneNumber == null || phoneNumber.isEmpty) {
         final userData = await _authService.getCurrentUserData();
-        if (userData != null) {
+        if (userData != null && userData.mobileNumber.isNotEmpty) {
           phoneNumber = userData.mobileNumber;
-          AppLogger.d('[BudgetController] Using phone number from user data');
+          AppLogger.d('[BudgetController] Using phone number from UserModel');
+        }
+      }
+
+      // Priority 3: Fallback to Firebase Auth phone number (least reliable for updates)
+      if (phoneNumber == null || phoneNumber.isEmpty) {
+        final authUser = _auth.currentUser;
+        if (authUser?.phoneNumber != null &&
+            authUser!.phoneNumber!.isNotEmpty) {
+          phoneNumber = authUser.phoneNumber;
+          AppLogger.d(
+            '[BudgetController] Using phone number from Firebase Auth (fallback)',
+          );
         }
       }
 

@@ -111,7 +111,7 @@ class _PhoneEntryPageState extends State<PhoneEntryPage> {
         elevation: 0,
         leading: IconButton(
           icon: Icon(Iconsax.arrow_left_1, color: AppColor.accentGreen),
-          onPressed: () => context.go('/'),
+          onPressed: () => context.go('login'),
         ),
         title: Text(
           'Verify Your Number',
@@ -142,7 +142,8 @@ class _PhoneEntryPageState extends State<PhoneEntryPage> {
                     child: Text(
                       'Already have a code? Enter it',
                       style: ResponsiveText.body(context).copyWith(
-                        color: theme.textTheme.bodyLarge?.color ??
+                        color:
+                            theme.textTheme.bodyLarge?.color ??
                             AppColor.primary,
                         fontWeight: FontWeight.w600,
                       ),
@@ -199,18 +200,17 @@ class _PhoneEntryPageState extends State<PhoneEntryPage> {
         children: [
           Text(
             'Send a one-time password to your phone.',
-            style: ResponsiveText.body(context).copyWith(
-              color: textColor,
-              fontWeight: FontWeight.w600,
-            ),
+            style: ResponsiveText.body(
+              context,
+            ).copyWith(color: textColor, fontWeight: FontWeight.w600),
           ),
           SizedBox(height: Insets.sm),
           Text(
             'SmsChef delivers the code through your registered device. '
             'Keep the SmsChef app online and the device connected so that the SMS can be sent.',
-            style: ResponsiveText.body(context).copyWith(
-              color: secondaryTextColor,
-            ),
+            style: ResponsiveText.body(
+              context,
+            ).copyWith(color: secondaryTextColor),
           ),
         ],
       ),
@@ -227,10 +227,9 @@ class _PhoneEntryPageState extends State<PhoneEntryPage> {
       children: [
         Text(
           'Mobile number',
-          style: ResponsiveText.label(context).copyWith(
-            fontWeight: FontWeight.w600,
-            color: textColor,
-          ),
+          style: ResponsiveText.label(
+            context,
+          ).copyWith(fontWeight: FontWeight.w600, color: textColor),
         ),
         SizedBox(height: Insets.sm),
         TextField(
@@ -239,9 +238,7 @@ class _PhoneEntryPageState extends State<PhoneEntryPage> {
           style: TextStyle(color: textColor),
           decoration: InputDecoration(
             hintText: '+63 9XX XXX XXXX',
-            hintStyle: TextStyle(
-              color: theme.textTheme.bodyMedium?.color,
-            ),
+            hintStyle: TextStyle(color: theme.textTheme.bodyMedium?.color),
             prefixIcon: Icon(
               Iconsax.mobile,
               color: theme.textTheme.bodyMedium?.color,

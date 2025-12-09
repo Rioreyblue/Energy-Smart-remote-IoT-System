@@ -6,16 +6,20 @@ import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import '../firebase_options.dart';
 import '../utils/app_logger.dart';
 import '../utils/app_router.dart';
+import 'threshold_alert_service.dart';
 
 /// Budget alert notification channel id.
 const String kBudgetAlertChannelId = 'energy_alerts';
 
 /// Action id used for stopping an ongoing budget alert.
 const String kStopAlertActionId = 'STOP_ALERT';
+const String kSnoozeAlertActionId = 'SNOOZE_ALERT';
+const String kDismissAlertActionId = 'DISMISS_ALERT';
 
 /// Background handler for FCM messages.
 @pragma('vm:entry-point')
@@ -105,12 +109,30 @@ class PushNotificationManager {
       'BUDGET_ALERT',
       actions: [
         DarwinNotificationAction.plain(
+          kSnoozeAlertActionId,
+          'Snooze',
+          options: <DarwinNotificationActionOption>{
+            DarwinNotificationActionOption.foreground,
+          },
+        ),
+        DarwinNotificationAction.plain(
+          kDismissAlertActionId,
+          'Dismiss',
+          options: <DarwinNotificationActionOption>{
+            DarwinNotificationActionOption.foreground,
+          },
+        ),
+        DarwinNotificationAction.plain(
           kStopAlertActionId,
-          'Stop Alert',
-          options: {DarwinNotificationActionOption.destructive},
+          'Stop',
+          options: <DarwinNotificationActionOption>{
+            DarwinNotificationActionOption.destructive,
+          },
         ),
       ],
-      options: {DarwinNotificationCategoryOption.customDismissAction},
+      options: <DarwinNotificationCategoryOption>{
+        DarwinNotificationCategoryOption.customDismissAction,
+      },
     );
 
     final iosSettings = DarwinInitializationSettings(
@@ -210,8 +232,20 @@ class PushNotificationManager {
       styleInformation: BigTextStyleInformation(''),
       actions: const [
         AndroidNotificationAction(
+          kSnoozeAlertActionId,
+          'Snooze',
+          showsUserInterface: false,
+          cancelNotification: false,
+        ),
+        AndroidNotificationAction(
+          kDismissAlertActionId,
+          'Dismiss',
+          showsUserInterface: false,
+          cancelNotification: true,
+        ),
+        AndroidNotificationAction(
           kStopAlertActionId,
-          'Stop Alert',
+          'Stop',
           showsUserInterface: true,
           cancelNotification: true,
         ),
@@ -258,7 +292,12 @@ class PushNotificationManager {
       appRouter.go('/home?tab=2');
     }
 
-    if (response.actionId == kStopAlertActionId) {
+    // Handle different action button clicks
+    if (response.actionId == kSnoozeAlertActionId) {
+      await _handleSnoozeAlert(data);
+    } else if (response.actionId == kDismissAlertActionId) {
+      await _handleDismissAlert(data);
+    } else if (response.actionId == kStopAlertActionId) {
       await _handleStopAlert(data);
     }
   }
@@ -275,7 +314,64 @@ class PushNotificationManager {
     }
   }
 
-  Future<void> _handleStopAlert(Map<String, dynamic> data) async {
+  /// Handle snooze action - snooze alert for 5 minutes
+  /// This fully overrides the notification loop for 5 minutes
+  Future<void> _handleSnoozeAlert(Map<String, dynamic> data) async {
+    final int? notificationId = int.tryParse(
+      data['notification_id']?.toString() ?? '',
+    );
+    if (notificationId != null) {
+      await _localNotifications.cancel(notificationId);
+    }
+
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return;
+
+    final budgetId = data['budget_id'] ?? 'current';
+    final alertId = data['alert_id'];
+
+    final firestore = FirebaseFirestore.instance;
+    final userRef = firestore.collection('users').doc(user.uid);
+
+    // Set snooze until 5 minutes from now
+    final snoozedUntil = DateTime.now().add(const Duration(minutes: 5));
+
+    if (alertId != null) {
+      await userRef.collection('budget_alerts').doc(alertId.toString()).set({
+        'snoozed': true,
+        'snoozedUntil': Timestamp.fromDate(snoozedUntil),
+        'snoozedAt': FieldValue.serverTimestamp(),
+      }, SetOptions(merge: true));
+    }
+
+    // Update budget target with snooze - this prevents future notifications
+    await userRef.collection('budget_target').doc(budgetId).set({
+      'snoozedUntil': Timestamp.fromDate(snoozedUntil),
+      'lastSnoozedAt': FieldValue.serverTimestamp(),
+      'alertsStopped': false, // Ensure alerts are not stopped when snoozing
+    }, SetOptions(merge: true));
+
+    // Also update ThresholdAlertService snooze state
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setInt(
+        'threshold_alert_snoozed_until',
+        snoozedUntil.millisecondsSinceEpoch,
+      );
+    } catch (e) {
+      AppLogger.e(
+        '[PushNotificationManager] Error setting snooze in prefs: $e',
+      );
+    }
+
+    AppLogger.i(
+      '[PushNotificationManager] Alert snoozed until ${snoozedUntil.toIso8601String()} - notification loop paused',
+    );
+  }
+
+  /// Handle dismiss action - dismiss current alert but allow future alerts
+  /// This prevents notifications for the current threshold cycle but allows future ones
+  Future<void> _handleDismissAlert(Map<String, dynamic> data) async {
     final int? notificationId = int.tryParse(
       data['notification_id']?.toString() ?? '',
     );
@@ -299,10 +395,91 @@ class PushNotificationManager {
       }, SetOptions(merge: true));
     }
 
+    // Update budget target - mark as dismissed but keep alerts enabled
     await userRef.collection('budget_target').doc(budgetId).set({
       'lastAlertDismissedAt': FieldValue.serverTimestamp(),
       'lastAlertDismissedType': data['alert_type'] ?? 'threshold',
+      'alertsStopped': false, // Keep alerts enabled
+      'snoozedUntil': null, // Clear any snooze
     }, SetOptions(merge: true));
+
+    // Also stop any active threshold alerts
+    try {
+      final thresholdService = ThresholdAlertService.instance;
+      await thresholdService.stopAlert(clearCooldown: true);
+    } catch (e) {
+      AppLogger.e(
+        '[PushNotificationManager] Error stopping threshold alert: $e',
+      );
+    }
+
+    AppLogger.i(
+      '[PushNotificationManager] Alert dismissed - current cycle stopped, future alerts enabled',
+    );
+  }
+
+  /// Handle stop action - stop alert loop completely
+  /// This fully overrides and disables the notification loop
+  Future<void> _handleStopAlert(Map<String, dynamic> data) async {
+    final int? notificationId = int.tryParse(
+      data['notification_id']?.toString() ?? '',
+    );
+    if (notificationId != null) {
+      await _localNotifications.cancel(notificationId);
+    }
+
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return;
+
+    final budgetId = data['budget_id'] ?? 'current';
+    final alertId = data['alert_id'];
+
+    final firestore = FirebaseFirestore.instance;
+    final userRef = firestore.collection('users').doc(user.uid);
+
+    if (alertId != null) {
+      await userRef.collection('budget_alerts').doc(alertId.toString()).set({
+        'dismissed': true,
+        'stopped': true,
+        'dismissedAt': FieldValue.serverTimestamp(),
+      }, SetOptions(merge: true));
+    }
+
+    // Mark alerts as stopped to prevent ALL future notifications
+    await userRef.collection('budget_target').doc(budgetId).set({
+      'lastAlertDismissedAt': FieldValue.serverTimestamp(),
+      'lastAlertDismissedType': data['alert_type'] ?? 'threshold',
+      'alertsStopped': true,
+      'alertsStoppedAt': FieldValue.serverTimestamp(),
+      'snoozedUntil': null, // Clear any snooze when stopping
+    }, SetOptions(merge: true));
+
+    // Also set the stopped flag in ThresholdAlertService
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setBool('threshold_alert_stopped', true);
+      // Clear snooze when stopping
+      await prefs.remove('threshold_alert_snoozed_until');
+    } catch (e) {
+      AppLogger.e('[PushNotificationManager] Error setting stopped flag: $e');
+    }
+
+    // Stop any active threshold alerts
+    try {
+      final thresholdService = ThresholdAlertService.instance;
+      await thresholdService.stopAlert(clearCooldown: true);
+      await thresholdService.resetState(
+        clearStopped: false,
+      ); // Keep stopped flag
+    } catch (e) {
+      AppLogger.e(
+        '[PushNotificationManager] Error stopping threshold alert service: $e',
+      );
+    }
+
+    AppLogger.i(
+      '[PushNotificationManager] Alert stopped - notification loop fully disabled',
+    );
   }
 
   Future<void> _storeToken(String token) async {

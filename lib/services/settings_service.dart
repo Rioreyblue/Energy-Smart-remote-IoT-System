@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'database_service.dart';
 
 class SettingsService {
   // Static instance for singleton pattern
@@ -10,6 +11,7 @@ class SettingsService {
 
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
   final FirebaseAuth _auth = FirebaseAuth.instance;
+  final DatabaseService _db = DatabaseService();
 
   String get _userId => _auth.currentUser?.uid ?? '';
   DocumentReference get _settingsRef => _firestore
@@ -295,12 +297,78 @@ class SettingsService {
 
   Future<bool> updateUserProfile(Map<String, dynamic> profileData) async {
     try {
+      // Update profile subcollection (existing behavior)
       await _profileRef.set(profileData, SetOptions(merge: true));
+
+      // Also update main user document and Realtime Database for phone number
+      // This ensures SMS notifications use the updated phone number
+      final phoneNumber = profileData['phone'] as String?;
+      final name = profileData['name'] as String?;
+      final address = profileData['address'] as String?;
+
+      if (phoneNumber != null && phoneNumber.isNotEmpty) {
+        // Update main Firestore user document (UserModel)
+        await _db.updateMainUserDocument(_userId, {
+          'mobileNumber': phoneNumber,
+          if (name != null) 'firstName': _extractFirstName(name),
+          if (name != null) 'lastName': _extractLastName(name),
+          if (address != null) 'address': address,
+        });
+
+        // Update Realtime Database user document
+        await _db.updateRealtimeUserFields(_userId, {
+          'mobileNumber': phoneNumber,
+          'phoneNumber':
+              phoneNumber, // Also save as phoneNumber for compatibility
+          if (name != null) 'fullName': name,
+          if (address != null) 'address': address,
+        });
+
+        debugPrint(
+          '[SettingsService] Phone number synced to all locations: ${phoneNumber.length > 4 ? phoneNumber.substring(phoneNumber.length - 4) : "****"}',
+        );
+      } else if (name != null || address != null) {
+        // Update name and address even if phone number is not provided
+        final updates = <String, dynamic>{};
+        if (name != null) {
+          updates['firstName'] = _extractFirstName(name);
+          updates['lastName'] = _extractLastName(name);
+        }
+        if (address != null) {
+          updates['address'] = address;
+        }
+
+        if (updates.isNotEmpty) {
+          await _db.updateMainUserDocument(_userId, updates);
+          if (name != null) {
+            await _db.updateRealtimeUserFields(_userId, {'fullName': name});
+          }
+          if (address != null) {
+            await _db.updateRealtimeUserFields(_userId, {'address': address});
+          }
+        }
+      }
+
       return true;
     } catch (e) {
       debugPrint('Error updating user profile: $e');
       return false;
     }
+  }
+
+  // Helper method to extract first name from full name
+  String _extractFirstName(String fullName) {
+    final parts = fullName.trim().split(' ');
+    return parts.isNotEmpty ? parts.first : fullName;
+  }
+
+  // Helper method to extract last name from full name
+  String _extractLastName(String fullName) {
+    final parts = fullName.trim().split(' ');
+    if (parts.length > 1) {
+      return parts.sublist(1).join(' ');
+    }
+    return '';
   }
 
   Future<bool> createUserProfile(Map<String, dynamic> profileData) async {

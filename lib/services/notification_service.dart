@@ -493,6 +493,15 @@ class NotificationService {
     String? budgetName,
   }) async {
     try {
+      // Check if alerts are stopped before sending
+      final isStopped = await ThresholdAlertService.instance.isAlertsStopped();
+      if (isStopped && !bypassDailyCheck) {
+        AppLogger.i(
+          '[NotificationService] Alerts are stopped - skipping threshold notification',
+        );
+        return;
+      }
+
       await ThresholdAlertService.instance.triggerAlert(
         consumedCost: consumedCost,
         totalBudget: totalBudget,

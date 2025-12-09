@@ -6,6 +6,7 @@ import '../utils/app_logger.dart';
 import 'notification_service.dart';
 import 'sms_chef_service.dart';
 import 'auth_service.dart';
+import 'settings_service.dart';
 
 /// Service for managing power rate from admin settings
 class PowerRateService extends ChangeNotifier {
@@ -239,22 +240,44 @@ class PowerRateService extends ChangeNotifier {
         return;
       }
 
-      // Get user's phone number from multiple sources
+      // Get user's phone number from multiple sources (check most recent first)
       String? phoneNumber;
 
-      // Try Firebase Auth phone number first
-      final authUser = _auth.currentUser;
-      if (authUser?.phoneNumber != null && authUser!.phoneNumber!.isNotEmpty) {
-        phoneNumber = authUser.phoneNumber;
-        AppLogger.d('[PowerRateService] Using phone number from Firebase Auth');
+      // Priority 1: Check profile subcollection first (most up-to-date)
+      try {
+        final settingsService = SettingsService();
+        final profile = await settingsService.getUserProfile();
+        if (profile != null) {
+          final profilePhone = profile['phone'] as String?;
+          if (profilePhone != null && profilePhone.isNotEmpty) {
+            phoneNumber = profilePhone;
+            AppLogger.d(
+              '[PowerRateService] Using phone number from profile (most recent)',
+            );
+          }
+        }
+      } catch (e) {
+        AppLogger.w('[PowerRateService] Error getting phone from profile: $e');
       }
 
-      // Fallback to user data from AuthService
+      // Priority 2: Fallback to user data from AuthService (UserModel)
       if (phoneNumber == null || phoneNumber.isEmpty) {
         final userData = await _authService.getCurrentUserData();
-        if (userData != null) {
+        if (userData != null && userData.mobileNumber.isNotEmpty) {
           phoneNumber = userData.mobileNumber;
-          AppLogger.d('[PowerRateService] Using phone number from user data');
+          AppLogger.d('[PowerRateService] Using phone number from UserModel');
+        }
+      }
+
+      // Priority 3: Fallback to Firebase Auth phone number (least reliable for updates)
+      if (phoneNumber == null || phoneNumber.isEmpty) {
+        final authUser = _auth.currentUser;
+        if (authUser?.phoneNumber != null &&
+            authUser!.phoneNumber!.isNotEmpty) {
+          phoneNumber = authUser.phoneNumber;
+          AppLogger.d(
+            '[PowerRateService] Using phone number from Firebase Auth (fallback)',
+          );
         }
       }
 

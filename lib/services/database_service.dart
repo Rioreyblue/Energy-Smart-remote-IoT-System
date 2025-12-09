@@ -74,12 +74,26 @@ class DatabaseService {
             .get();
     return snap.exists;
   }
+
+  // Update main Firestore user document (UserModel)
+  Future<void> updateMainUserDocument(
+    String uid,
+    Map<String, dynamic> updates,
+  ) async {
+    await _firestore.collection(_usersCollection).doc(uid).update({
+      ...updates,
+      'updatedAt': FieldValue.serverTimestamp(),
+    });
+  }
+
+  // Update user fields in Realtime Database
+  Future<void> updateRealtimeUserFields(
+    String uid,
+    Map<String, dynamic> updates,
+  ) async {
+    await _database.ref('$_usersPath/$uid').update({
+      ...updates,
+      'updatedAt': ServerValue.timestamp,
+    });
+  }
 }
-
-
-
-
-
-
-
-

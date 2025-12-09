@@ -43,6 +43,7 @@ class FirestoreBudgetService {
               (data['lastAlertGeneratedAt'] as Timestamp?)?.toDate(),
           'lastAlertGeneratedType': data['lastAlertGeneratedType'],
           'snoozedUntil': (data['snoozedUntil'] as Timestamp?)?.toDate(),
+          'alertsStopped': data['alertsStopped'] ?? false,
         };
       }
       return null;

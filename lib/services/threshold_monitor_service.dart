@@ -167,6 +167,24 @@ class ThresholdMonitorTask {
         return;
       }
 
+      // Check if alerts are stopped - fully override notification loop
+      final alertsStopped = data['alertsStopped'] ?? false;
+      if (alertsStopped) {
+        AppLogger.i(
+          '[ThresholdMonitorTask] Alerts stopped by user - notification loop disabled.',
+        );
+        return;
+      }
+
+      // Check if alerts are snoozed - override notification loop until snooze expires
+      final snoozedUntil = (data['snoozedUntil'] as Timestamp?)?.toDate();
+      if (snoozedUntil != null && DateTime.now().isBefore(snoozedUntil)) {
+        AppLogger.i(
+          '[ThresholdMonitorTask] Alerts snoozed until ${snoozedUntil.toIso8601String()} - skipping.',
+        );
+        return;
+      }
+
       double remainingBudget =
           (data['remainingBudget'] as num?)?.toDouble() ?? totalBudget;
 
