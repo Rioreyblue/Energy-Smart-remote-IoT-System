@@ -72,17 +72,23 @@ class OneSignalService {
           '[OneSignalService] Notification clicked: ${event.notification.notificationId}',
         );
 
+        // Log full event data for debugging
+        AppLogger.d(
+          '[OneSignalService] Full notification data: ${event.notification.toString()}',
+        );
+
         final additionalData = event.notification.additionalData;
         if (additionalData != null) {
+          AppLogger.d('[OneSignalService] Additional data: $additionalData');
+
           final type = additionalData['type'] as String?;
 
           // Check if this is an action button click
-          // OneSignal REST API action buttons pass the action ID in additionalData
-          // The button ID from the REST API 'buttons' array is passed as 'actionSelected'
+          // OneSignal REST API action buttons pass the action ID in various ways
+          // Try all possible locations where OneSignal might store the action ID
           String? actionId;
           try {
-            // For REST API notifications with buttons, the action ID is in additionalData
-            // Try common field names used by OneSignal
+            // Method 1: Check additionalData for common action ID fields
             actionId = additionalData['actionSelected'] as String?;
             if (actionId == null) {
               actionId = additionalData['actionId'] as String?;
@@ -90,14 +96,31 @@ class OneSignalService {
             if (actionId == null) {
               actionId = additionalData['action'] as String?;
             }
-            // Also check event.result if available (for newer SDK versions)
+            if (actionId == null) {
+              actionId = additionalData['buttonId'] as String?;
+            }
+            if (actionId == null) {
+              actionId = additionalData['button_id'] as String?;
+            }
+
+            // Method 2: Check event.result if available (for newer SDK versions)
             if (actionId == null) {
               try {
-                // Try to access actionId from result object
                 final result = event.result;
-                final resultMap = result as Map<String, dynamic>?;
-                if (resultMap != null) {
-                  actionId = resultMap['actionId'] as String?;
+                AppLogger.d(
+                  '[OneSignalService] Event result type: ${result.runtimeType}',
+                );
+                AppLogger.d('[OneSignalService] Event result: $result');
+                // OneSignal SDK may pass action ID through result object
+                // Try to access result properties (SDK-specific)
+                try {
+                  // Some SDK versions use result.actionId or similar
+                  final resultString = result.toString();
+                  AppLogger.d(
+                    '[OneSignalService] Result string: $resultString',
+                  );
+                } catch (_) {
+                  // Ignore if result doesn't have expected properties
                 }
               } catch (e) {
                 AppLogger.d(
@@ -105,9 +128,24 @@ class OneSignalService {
                 );
               }
             }
-            AppLogger.d('[OneSignalService] Action ID detected: $actionId');
+
+            // Method 3: Check notification body for action hints
+            if (actionId == null) {
+              final body = event.notification.body;
+              AppLogger.d('[OneSignalService] Notification body: $body');
+            }
+
+            if (actionId != null && actionId.isNotEmpty) {
+              AppLogger.i(
+                '[OneSignalService] ✅ Action button detected: $actionId',
+              );
+            } else {
+              AppLogger.d(
+                '[OneSignalService] No action ID found - notification body was tapped',
+              );
+            }
           } catch (e) {
-            AppLogger.d('[OneSignalService] No action ID in click event: $e');
+            AppLogger.e('[OneSignalService] Error detecting action ID: $e');
           }
 
           if (actionId != null &&
@@ -129,6 +167,10 @@ class OneSignalService {
             // Handle other notification types
             _handleNotificationClick(type, additionalData);
           }
+        } else {
+          AppLogger.w(
+            '[OneSignalService] No additional data in notification click event',
+          );
         }
       });
 
@@ -248,12 +290,14 @@ class OneSignalService {
         _oneSignalRestApiKey.isNotEmpty) {
       try {
         // OneSignal REST API expects REST API key in Authorization header
-        // Format: "Basic {REST_API_KEY}" (the key itself, not base64 encoded)
+        // Format: "Basic {base64_encoded_key}" - REST API key should be base64 encoded
+        // Note: OneSignal REST API key format is "REST_API_KEY:" (with colon), then base64 encode
+        final authString = base64Encode(utf8.encode('$_oneSignalRestApiKey:'));
         final response = await http.post(
           Uri.parse('https://onesignal.com/api/v1/notifications'),
           headers: {
             'Content-Type': 'application/json; charset=utf-8',
-            'Authorization': 'Basic $_oneSignalRestApiKey',
+            'Authorization': 'Basic $authString',
           },
           body: jsonEncode({
             'app_id': _oneSignalAppId,
@@ -267,6 +311,9 @@ class OneSignalService {
               'remainingBudget': remainingBudget.toStringAsFixed(2),
               'thresholdPercentage': thresholdPercentage.toStringAsFixed(1),
             },
+            // Action buttons - users may need to expand notification to see them
+            // Android: Swipe down on notification to expand and see buttons
+            // iOS: Long-press notification to see buttons
             'buttons': [
               {'id': 'snooze', 'text': 'Snooze'},
               {'id': 'dismiss', 'text': 'Dismiss'},
@@ -291,26 +338,38 @@ class OneSignalService {
             'android_led_color': 'FFE74C3C', // LED color for notifications
             'android_small_icon': 'ic_notification', // Small icon resource name
             'android_large_icon': 'ic_notification', // Large icon resource name
-            // Ensure notification wakes device and shows on lock screen
-            'android_badge_icon_type': 'LargeIcon',
+            // Ensure notification is expandable to show action buttons
+            'android_group_key':
+                'threshold_alerts', // Group related notifications
             // iOS-specific settings
             'ios_badgeType': 'Increase',
             'ios_badgeCount': 1,
-            // Additional settings to ensure delivery
-            'send_after': null, // Send immediately
-            'delayed_option': null, // No delay
           }),
         );
 
         if (response.statusCode == 200) {
+          final responseData =
+              jsonDecode(response.body) as Map<String, dynamic>;
           AppLogger.i(
             '[OneSignalService] ✅ Threshold alert sent via REST API (works when app is closed)',
+          );
+          AppLogger.d(
+            '[OneSignalService] Notification ID: ${responseData['id']}, Recipients: ${responseData['recipients']}',
           );
           return;
         } else {
           AppLogger.e(
             '[OneSignalService] ❌ REST API failed: ${response.statusCode} - ${response.body}',
           );
+          // Log detailed error for debugging
+          try {
+            final errorData = jsonDecode(response.body) as Map<String, dynamic>;
+            AppLogger.e(
+              '[OneSignalService] Error details: ${errorData['errors'] ?? errorData}',
+            );
+          } catch (_) {
+            // Ignore JSON parse errors
+          }
           // Log error but don't throw - allow system to continue
           // The notification won't be sent, but the app won't crash
         }
@@ -463,11 +522,13 @@ class OneSignalService {
       try {
         final notificationData = {'type': type, if (data != null) ...data};
 
+        // Use base64 encoded authorization for REST API
+        final authString = base64Encode(utf8.encode('$_oneSignalRestApiKey:'));
         final response = await http.post(
           Uri.parse('https://onesignal.com/api/v1/notifications'),
           headers: {
             'Content-Type': 'application/json; charset=utf-8',
-            'Authorization': 'Basic $_oneSignalRestApiKey',
+            'Authorization': 'Basic $authString',
           },
           body: jsonEncode({
             'app_id': _oneSignalAppId,

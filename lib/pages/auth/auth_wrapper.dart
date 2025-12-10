@@ -243,73 +243,104 @@ class _AuthWrapperState extends State<AuthWrapper> {
 
                   final isFullyVerified = verificationSnap.data ?? false;
 
-                  // If fully verified and at root, redirect to home
-                  if (isFullyVerified) {
-                    if (location == '/') {
-                      WidgetsBinding.instance.addPostFrameCallback((_) {
-                        if (mounted && context.mounted) {
-                          context.go('/home');
-                        }
-                      });
-                      return Scaffold(
-                        backgroundColor: Theme.of(context).colorScheme.surface,
-                        body: Center(
-                          child: CircularProgressIndicator(
-                            color: Theme.of(context).primaryColor,
+                  // Check session OTP verification (required on every login)
+                  return FutureBuilder<bool>(
+                    future: _authService.isSessionOtpVerified(),
+                    builder: (context, sessionOtpSnap) {
+                      if (sessionOtpSnap.connectionState ==
+                          ConnectionState.waiting) {
+                        return Scaffold(
+                          backgroundColor:
+                              Theme.of(context).colorScheme.surface,
+                          body: Center(
+                            child: CircularProgressIndicator(
+                              color: Theme.of(context).primaryColor,
+                            ),
                           ),
-                        ),
-                      );
-                    }
-                    // If on login/register while verified, redirect to home
-                    if (location == '/login' || location == '/register') {
-                      WidgetsBinding.instance.addPostFrameCallback((_) {
-                        if (mounted && context.mounted) {
-                          context.go('/home');
+                        );
+                      }
+
+                      final sessionOtpVerified = sessionOtpSnap.data ?? false;
+
+                      // Always require session OTP verification, even if phone is already verified
+                      // Only allow home access if both fully verified AND session OTP verified
+                      if (isFullyVerified && sessionOtpVerified) {
+                        if (location == '/') {
+                          WidgetsBinding.instance.addPostFrameCallback((_) {
+                            if (mounted && context.mounted) {
+                              context.go('/home');
+                            }
+                          });
+                          return Scaffold(
+                            backgroundColor:
+                                Theme.of(context).colorScheme.surface,
+                            body: Center(
+                              child: CircularProgressIndicator(
+                                color: Theme.of(context).primaryColor,
+                              ),
+                            ),
+                          );
                         }
-                      });
-                      return Scaffold(
-                        backgroundColor: Theme.of(context).colorScheme.surface,
-                        body: Center(
-                          child: CircularProgressIndicator(
-                            color: Theme.of(context).primaryColor,
-                          ),
-                        ),
-                      );
-                    }
-                    // Allow /sms even if already verified so we can enforce OTP on each login
-                    if (location == '/sms') {
-                      return const SizedBox.shrink();
-                    }
-                  }
+                        // If on login/register while verified, redirect to home
+                        if (location == '/login' || location == '/register') {
+                          WidgetsBinding.instance.addPostFrameCallback((_) {
+                            if (mounted && context.mounted) {
+                              context.go('/home');
+                            }
+                          });
+                          return Scaffold(
+                            backgroundColor:
+                                Theme.of(context).colorScheme.surface,
+                            body: Center(
+                              child: CircularProgressIndicator(
+                                color: Theme.of(context).primaryColor,
+                              ),
+                            ),
+                          );
+                        }
+                        // Allow /sms even if already verified so we can enforce OTP on each login
+                        if (location == '/sms') {
+                          return const SizedBox.shrink();
+                        }
+                      }
 
-                  // If not fully verified, handle different paths
-                  if (!isFullyVerified) {
-                    // Allow /sms route for phone verification
-                    if (location == '/sms') {
-                      // Let GoRouter handle the /sms route (PhoneEntryPage)
-                      return const SizedBox.shrink();
-                    }
+                      // If not fully verified OR session OTP not verified, require verification
+                      if (!isFullyVerified || !sessionOtpVerified) {
+                        // Allow /sms route for phone verification
+                        if (location == '/sms') {
+                          // Let GoRouter handle the /sms route (PhoneEntryPage)
+                          return const SizedBox.shrink();
+                        }
 
-                    // Show verification page at root
-                    if (location == '/') {
-                      final emailVerified = user.isEmailVerified;
-                      return VerificationPage(
-                        verificationType: emailVerified ? 'phone' : 'email',
-                        contactInfo:
-                            emailVerified ? user.mobileNumber : user.email,
-                        firstName: user.firstName,
-                        lastName: user.lastName,
-                        middleName: user.middleName,
-                        mobileNumber: user.mobileNumber,
-                        email: user.email,
-                        energyProvider: user.energyProvider,
-                        address: user.address,
-                      );
-                    }
-                  }
+                        // Show verification page at root
+                        if (location == '/') {
+                          final emailVerified = user.isEmailVerified;
+                          // Always show phone verification if session OTP not verified
+                          final verificationType =
+                              (!sessionOtpVerified || emailVerified)
+                                  ? 'phone'
+                                  : 'email';
+                          return VerificationPage(
+                            verificationType: verificationType,
+                            contactInfo:
+                                verificationType == 'phone'
+                                    ? user.mobileNumber
+                                    : user.email,
+                            firstName: user.firstName,
+                            lastName: user.lastName,
+                            middleName: user.middleName,
+                            mobileNumber: user.mobileNumber,
+                            email: user.email,
+                            energyProvider: user.energyProvider,
+                            address: user.address,
+                          );
+                        }
+                      }
 
-                  // For other auth paths when authenticated but not verified, show login
-                  return const NewLoginPage();
+                      // For other auth paths when authenticated but not verified, show login
+                      return const NewLoginPage();
+                    },
+                  );
                 },
               );
             },

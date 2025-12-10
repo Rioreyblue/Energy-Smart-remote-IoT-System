@@ -222,32 +222,11 @@ class _NewLoginPageState extends State<NewLoginPage> {
 
         if (!mounted) return;
 
-        // Check if user is truly new (just created) vs existing
-        // New users have empty mobileNumber and haven't completed onboarding
-        final isNewUser =
-            user.mobileNumber.isEmpty &&
-            user.energyProvider.isEmpty &&
-            user.address.isEmpty;
-
-        // Check if onboarding was seen
+        // Skip onboarding - always proceed directly to phone verification
+        // Mark onboarding as seen to prevent it from showing
         final prefs = await SharedPreferences.getInstance();
-        final seenOnboarding = prefs.getBool('seen_onboarding') ?? false;
+        await prefs.setBool('seen_onboarding', true);
 
-        // For existing users, mark onboarding as seen to prevent future issues
-        if (!isNewUser && !seenOnboarding) {
-          await prefs.setBool('seen_onboarding', true);
-        }
-
-        // Only show onboarding for truly new users who haven't seen it
-        if (isNewUser && !seenOnboarding) {
-          // New user - navigate to onboarding first
-          if (mounted) {
-            context.go('/onboarding');
-            return;
-          }
-        }
-
-        // Existing user or onboarding completed - proceed with verification
         // Always require phone verification after Google sign in
         final phoneAuthService = context.read<PhoneAuthService>();
         phoneAuthService.reset();

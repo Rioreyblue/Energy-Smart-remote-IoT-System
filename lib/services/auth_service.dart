@@ -45,6 +45,8 @@ class AuthService {
         if (userData != null) {
           // Save login state
           await _saveLoginState(true);
+          // Clear session OTP verification - require OTP on every login
+          await _clearSessionOtpVerification(result.user!.uid);
           return userData;
         }
       }
@@ -588,6 +590,8 @@ class AuthService {
 
         // Save login state
         await _saveLoginState(true);
+        // Clear session OTP verification - require OTP on every login
+        await _clearSessionOtpVerification(result.user!.uid);
 
         return userData;
       }
@@ -640,6 +644,7 @@ class AuthService {
       // Clear verification status from SharedPreferences
       if (uid != null) {
         await _clearVerificationStatus(uid);
+        await _clearSessionOtpVerification(uid);
       }
 
       await _saveLoginState(false);
@@ -812,6 +817,8 @@ class AuthService {
             isPhoneVerified: true,
           );
           await _saveVerificationStatus(result.user!.uid, 'phone', true);
+          // Mark session OTP as verified for this login session
+          await _setSessionOtpVerified(result.user!.uid);
           return true;
         }
 
@@ -832,6 +839,8 @@ class AuthService {
       final user = _auth.currentUser;
       if (user != null) {
         await _saveVerificationStatus(user.uid, 'phone', true);
+        // Mark session OTP as verified for this login session
+        await _setSessionOtpVerified(user.uid);
       }
 
       AppLogger.i('[AuthService] ✅ Phone verification completed via SmsChef');
@@ -1078,6 +1087,49 @@ class AuthService {
     } catch (e) {
       AppLogger.e('[AuthService] ❌ Error checking full verification: $e');
       return false;
+    }
+  }
+
+  /// Check if session OTP is verified (required on every login)
+  Future<bool> isSessionOtpVerified() async {
+    try {
+      final user = _auth.currentUser;
+      if (user == null) return false;
+
+      final prefs = await SharedPreferences.getInstance();
+      final key = 'session_otp_verified_${user.uid}';
+      return prefs.getBool(key) ?? false;
+    } catch (e) {
+      AppLogger.e(
+        '[AuthService] ❌ Error checking session OTP verification: $e',
+      );
+      return false;
+    }
+  }
+
+  /// Set session OTP as verified (after successful OTP verification)
+  Future<void> _setSessionOtpVerified(String uid) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final key = 'session_otp_verified_$uid';
+      await prefs.setBool(key, true);
+      AppLogger.d('[AuthService] Session OTP verified for user: $uid');
+    } catch (e) {
+      AppLogger.e('[AuthService] Error setting session OTP verified: $e');
+    }
+  }
+
+  /// Clear session OTP verification (required on every login)
+  Future<void> _clearSessionOtpVerification(String uid) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final key = 'session_otp_verified_$uid';
+      await prefs.setBool(key, false);
+      AppLogger.d(
+        '[AuthService] Session OTP verification cleared for user: $uid',
+      );
+    } catch (e) {
+      AppLogger.e('[AuthService] Error clearing session OTP verification: $e');
     }
   }
 
