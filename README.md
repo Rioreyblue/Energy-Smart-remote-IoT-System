@@ -1,11 +1,11 @@
 ```markdown
-# Energy Smart – Remote IoT System
+Energy Smart – Remote IoT System
 
 A mobile application and IoT platform built with **Flutter**, **Dart**, and custom **IoT Telemetry Protocols** for real-time remote energy monitoring, power analytics, and smart device management.
 
 ---
 
-## Features
+Features
 
 * 📊 Real-Time Dashboard – Monitor current load, voltage, and live power draw in real time
 * 📈 Usage Trends – View daily, weekly, and monthly consumption breakdowns
@@ -17,7 +17,7 @@ A mobile application and IoT platform built with **Flutter**, **Dart**, and cust
 
 ---
 
-## Tech Stack
+Tech Stack
 
 | Technology | Purpose |
 | :--- | :--- |
@@ -28,7 +28,7 @@ A mobile application and IoT platform built with **Flutter**, **Dart**, and cust
 
 ---
 
-## Prerequisites
+Prerequisites
 
 | Tool | Version |
 | :--- | :--- |
@@ -38,9 +38,9 @@ A mobile application and IoT platform built with **Flutter**, **Dart**, and cust
 
 ---
 
-## Setup Instructions
+Setup Instructions
 
-### 1. Clone the repository
+1. Clone the repository
 
 ```bash
 git clone [https://github.com/Rioreyblue/Energy-Smart-remote-IoT-System.git](https://github.com/Rioreyblue/Energy-Smart-remote-IoT-System.git)
