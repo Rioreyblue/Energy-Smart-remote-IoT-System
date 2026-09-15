@@ -1,4 +1,4 @@
-# exercise_app
+# Energy Smart  remote IoT System 
 
 A new Flutter project.
 
