@@ -1,11 +1,10 @@
-```markdown
-Energy Smart – Remote IoT System
+# Energy Smart – Remote IoT System
 
 A mobile application and IoT platform built with **Flutter**, **Dart**, and custom **IoT Telemetry Protocols** for real-time remote energy monitoring, power analytics, and smart device management.
 
 ---
 
-Features
+## Features
 
 * 📊 Real-Time Dashboard – Monitor current load, voltage, and live power draw in real time
 * 📈 Usage Trends – View daily, weekly, and monthly consumption breakdowns
@@ -17,7 +16,7 @@ Features
 
 ---
 
-Tech Stack
+## Tech Stack
 
 | Technology | Purpose |
 | :--- | :--- |
@@ -28,7 +27,7 @@ Tech Stack
 
 ---
 
-Prerequisites
+## Prerequisites
 
 | Tool | Version |
 | :--- | :--- |
@@ -36,16 +35,23 @@ Prerequisites
 | Dart | 3.x + |
 | Android Studio / VS Code | Latest |
 
+> ⚠️ **Important Environment Setup:**
+> Before attempting to run this application, ensure that **Android Studio** (or your preferred IDE) is fully installed and configured. 
+> 
+> Verify that all required dependencies, Android SDK components, licenses, and virtual devices (AVD) pass system checks by running:
+> ```bash
+> flutter doctor
+> ```
+> Fix any missing checks (such as accepting Android licenses via `flutter doctor --android-licenses`) until all core items display a checkmark (`[✓]`).
+
 ---
 
-Setup Instructions
+## Setup Instructions
 
-1. Clone the repository
+### 1. Clone the repository
 
 ```bash
 git clone [https://github.com/Rioreyblue/Energy-Smart-remote-IoT-System.git](https://github.com/Rioreyblue/Energy-Smart-remote-IoT-System.git)
-
-```
 
 ### 2. Install dependencies
 
@@ -97,8 +103,3 @@ Energy-Smart-remote-IoT-System/
 
 ---
 
-## Resources
-
-```
-
-```
